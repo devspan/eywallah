@@ -1,0 +1,42 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id               String   @id @default(cuid())
+  cryptoCoins      Float    @default(0)
+  lastActive       DateTime @default(now())
+  prestigePoints   Int      @default(0)
+  incomeMultiplier Float    @default(1)
+  offlineEarnings  Float    @default(0)
+  businesses       Business[]
+  upgrades         Upgrade[]
+  achievements     Achievement[]
+}
+
+model Business {
+  id       String @id @default(cuid())
+  type     String
+  count    Int    @default(0)
+  user     User   @relation(fields: [userId], references: [id])
+  userId   String
+}
+
+model Upgrade {
+  id     String @id @default(cuid())
+  type   String
+  user   User   @relation(fields: [userId], references: [id])
+  userId String
+}
+
+model Achievement {
+  id     String @id @default(cuid())
+  type   String
+  user   User   @relation(fields: [userId], references: [id])
+  userId String
+}
