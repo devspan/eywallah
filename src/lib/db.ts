@@ -1,8 +1,29 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import { User, BusinessType, UpgradeType } from '@/types';
 import { BUSINESSES, UPGRADES, calculateIncome } from '@/lib/gameLogic';
 
 const prisma = new PrismaClient();
+
+type PrismaUser = Prisma.UserGetPayload<{
+  include: { businesses: true; upgrades: true; achievements: true }
+}>;
+
+function convertPrismaUserToUser(prismaUser: PrismaUser): User {
+  return {
+    ...prismaUser,
+    businesses: prismaUser.businesses.map(b => ({
+      id: b.id,
+      type: b.type as BusinessType,
+      count: b.count
+    })),
+    upgrades: prismaUser.upgrades.map(u => ({
+      id: u.id,
+      type: u.type as UpgradeType
+    })),
+    achievements: prismaUser.achievements,
+    offlineEarnings: prismaUser.offlineEarnings
+  } as User;
+}
 
 export async function getUserById(userId: string): Promise<User | null> {
   try {
@@ -14,7 +35,7 @@ export async function getUserById(userId: string): Promise<User | null> {
         achievements: true,
       },
     });
-    return user as User | null;
+    return user ? convertPrismaUserToUser(user) : null;
   } catch (error) {
     console.error('Error fetching user:', error);
     return null;
@@ -31,14 +52,14 @@ export async function createUser(userId: string): Promise<User> {
         prestigePoints: 0,
         incomeMultiplier: 1,
         offlineEarnings: 0,
-      },
+      } as Prisma.UserCreateInput,
       include: {
         businesses: true,
         upgrades: true,
         achievements: true,
       },
     });
-    return user as User;
+    return convertPrismaUserToUser(user);
   } catch (error) {
     console.error('Error creating user:', error);
     throw error;
@@ -49,14 +70,14 @@ export async function updateUser(userId: string, data: Partial<Omit<User, 'busin
   try {
     const updatedUser = await prisma.user.update({
       where: { id: userId },
-      data,
+      data: data as Prisma.UserUpdateInput,
       include: {
         businesses: true,
         upgrades: true,
         achievements: true,
       },
     });
-    return updatedUser as User;
+    return convertPrismaUserToUser(updatedUser);
   } catch (error) {
     console.error('Error updating user:', error);
     throw error;
@@ -96,7 +117,8 @@ export async function addBusiness(userId: string, businessType: BusinessType): P
       },
     });
 
-    return updatedUser as User;
+    if (!updatedUser) throw new Error('User not found after adding business');
+    return convertPrismaUserToUser(updatedUser);
   } catch (error) {
     console.error('Error adding business:', error);
     throw error;
@@ -121,7 +143,7 @@ export async function addUpgrade(userId: string, upgradeType: UpgradeType): Prom
       },
     });
 
-    return user as User;
+    return convertPrismaUserToUser(user);
   } catch (error) {
     console.error('Error adding upgrade:', error);
     throw error;
@@ -180,7 +202,7 @@ export async function resetUserProgress(userId: string, prestigePoints: number):
       return user;
     });
 
-    return updatedUser as User;
+    return convertPrismaUserToUser(updatedUser);
   } catch (error) {
     console.error('Error resetting user progress:', error);
     throw error;

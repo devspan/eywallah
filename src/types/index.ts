@@ -4,6 +4,7 @@ export type User = {
   lastActive: Date;
   prestigePoints: number;
   incomeMultiplier: number;
+  offlineEarnings: number;
   businesses: UserBusiness[];
   upgrades: UserUpgrade[];
   achievements: Achievement[];
