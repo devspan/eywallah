@@ -1,7 +1,7 @@
 // src/app/api/game/route.ts
 import { NextResponse } from 'next/server';
 import { 
-  getUserById, createUser, updateUser, addBusiness, 
+  getUserById, getUserByTelegramId, createUser, updateUser, addBusiness, 
   addUpgrade, resetUserProgress, calculateOfflineEarnings
 } from '@/lib/db';
 import { 
@@ -18,29 +18,29 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const { action, userId, data } = await request.json();
+  const { action, data } = await request.json();
 
   try {
     switch (action) {
       case 'init': {
-        logger.debug('Initializing user data', { userId });
-        let user = await getUserById(userId);
+        logger.debug('Initializing user data', { telegramId: data.telegramId });
+        let user = await getUserByTelegramId(data.telegramId);
         let offlineEarnings = 0;
         if (!user) {
-          user = await createUser(userId);
+          user = await createUser(data.telegramId, data.username);
         } else {
-          const result = await calculateOfflineEarnings(userId);
+          const result = await calculateOfflineEarnings(user.id);
           user = result.user;
           offlineEarnings = result.offlineEarnings;
-          logger.debug('Offline earnings calculated', { userId, offlineEarnings });
+          logger.debug('Offline earnings calculated', { userId: user.id, offlineEarnings });
         }
         const income = calculateIncome(user);
         return NextResponse.json({ ...user, income, offlineEarnings });
       }
 
       case 'sync': {
-        logger.debug('Syncing user data', { userId, data });
-        const updatedUser = await updateUser(userId, {
+        logger.debug('Syncing user data', { userId: data.userId, data });
+        const updatedUser = await updateUser(data.userId, {
           cryptoCoins: data.cryptoCoins,
         });
         const income = calculateIncome(updatedUser);
@@ -48,13 +48,13 @@ export async function POST(request: Request) {
       }
 
       case 'click': {
-        logger.debug('Processing click action', { userId });
-        const clickedUser = await getUserById(userId);
+        logger.debug('Processing click action', { userId: data.userId });
+        const clickedUser = await getUserById(data.userId);
         if (!clickedUser) {
           return NextResponse.json({ error: 'User not found' }, { status: 404 });
         }
         const clickPower = calculateClickPower(clickedUser);
-        const userAfterClick = await updateUser(userId, {
+        const userAfterClick = await updateUser(data.userId, {
           cryptoCoins: clickedUser.cryptoCoins + clickPower,
         });
         const income = calculateIncome(userAfterClick);
@@ -62,9 +62,9 @@ export async function POST(request: Request) {
       }
 
       case 'buyBusiness': {
-        logger.debug('Buying business', { userId, businessType: data.businessType });
+        logger.debug('Buying business', { userId: data.userId, businessType: data.businessType });
         const { businessType } = data as { businessType: BusinessType };
-        const userBeforePurchase = await getUserById(userId);
+        const userBeforePurchase = await getUserById(data.userId);
         if (!userBeforePurchase) {
           return NextResponse.json({ error: 'User not found' }, { status: 404 });
         }
@@ -72,8 +72,8 @@ export async function POST(request: Request) {
         if (userBeforePurchase.cryptoCoins < cost) {
           return NextResponse.json({ error: 'Not enough coins' }, { status: 400 });
         }
-        const userAfterAddBusiness = await addBusiness(userId, businessType);
-        const userAfterPurchase = await updateUser(userId, {
+        const userAfterAddBusiness = await addBusiness(data.userId, businessType);
+        const userAfterPurchase = await updateUser(data.userId, {
           cryptoCoins: userAfterAddBusiness.cryptoCoins - cost,
         });
         const income = calculateIncome(userAfterPurchase);
@@ -81,9 +81,9 @@ export async function POST(request: Request) {
       }
 
       case 'buyUpgrade': {
-        logger.debug('Buying upgrade', { userId, upgradeId: data.upgradeId });
+        logger.debug('Buying upgrade', { userId: data.userId, upgradeId: data.upgradeId });
         const { upgradeId } = data as { upgradeId: UpgradeType };
-        const userBeforeUpgrade = await getUserById(userId);
+        const userBeforeUpgrade = await getUserById(data.userId);
         if (!userBeforeUpgrade) {
           return NextResponse.json({ error: 'User not found' }, { status: 404 });
         }
@@ -94,8 +94,8 @@ export async function POST(request: Request) {
         if (userBeforeUpgrade.upgrades.some(u => u.type === upgradeId)) {
           return NextResponse.json({ error: 'Upgrade already purchased' }, { status: 400 });
         }
-        const userAfterAddUpgrade = await addUpgrade(userId, upgradeId);
-        const userAfterUpgrade = await updateUser(userId, {
+        const userAfterAddUpgrade = await addUpgrade(data.userId, upgradeId);
+        const userAfterUpgrade = await updateUser(data.userId, {
           cryptoCoins: userAfterAddUpgrade.cryptoCoins - upgradeCost,
         });
         const income = calculateIncome(userAfterUpgrade);
@@ -103,8 +103,8 @@ export async function POST(request: Request) {
       }
 
       case 'prestige': {
-        logger.debug('Performing prestige', { userId });
-        const userBeforePrestige = await getUserById(userId);
+        logger.debug('Performing prestige', { userId: data.userId });
+        const userBeforePrestige = await getUserById(data.userId);
         if (!userBeforePrestige) {
           return NextResponse.json({ error: 'User not found' }, { status: 404 });
         }
@@ -112,7 +112,7 @@ export async function POST(request: Request) {
           return NextResponse.json({ error: 'Not enough coins to prestige' }, { status: 400 });
         }
         const prestigePoints = calculatePrestigePoints(userBeforePrestige.cryptoCoins);
-        const userAfterPrestige = await resetUserProgress(userId, prestigePoints);
+        const userAfterPrestige = await resetUserProgress(data.userId, prestigePoints);
         const income = calculateIncome(userAfterPrestige);
         return NextResponse.json({ ...userAfterPrestige, income });
       }

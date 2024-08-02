@@ -16,11 +16,22 @@ export const initTelegramAuth = async (): Promise<void> => {
   try {
     logger.debug('Initializing Telegram Web App');
     await window.Telegram.WebApp.ready();
+
+    // Add event listener for button click
+    window.Telegram.WebApp.MainButton.onClick(handleButtonClick);
+
     logger.debug('Telegram Web App initialized successfully');
   } catch (error) {
     logger.error('Failed to initialize Telegram Web App', error as Error);
     throw error;
   }
+};
+
+const handleButtonClick = (): void => {
+  logger.debug('Button clicked');
+  // Perform actions to start the game here
+  // For example, you can navigate to the game page or trigger a state change
+  window.location.href = '/game';
 };
 
 export const getTelegramUser = (): any => {

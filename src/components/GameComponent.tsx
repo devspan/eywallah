@@ -18,8 +18,9 @@ const CLICK_COOLDOWN = 500; // 0.5 seconds
 
 const GameComponent: React.FC = () => {
   const queryClient = useQueryClient();
-  const [userId, setUserId] = useState<string | null>(null);
+  const [telegramId, setTelegramId] = useState<string | null>(null);
   const [telegramUsername, setTelegramUsername] = useState<string | null>(null);
+  const [telegramWebApp, setTelegramWebApp] = useState<any>(null);
   const [localCoins, setLocalCoins] = useState(0);
   const [income, setIncome] = useState(0);
   const [offlineEarnings, setOfflineEarnings] = useState(0);
@@ -30,9 +31,10 @@ const GameComponent: React.FC = () => {
     const initAuth = async () => {
       try {
         await initTelegramAuth();
-        const user = await authenticateUser();
-        setUserId(user.id);
-        setTelegramUsername(user.username);
+        const telegramUser = await authenticateUser();
+        setTelegramId(telegramUser.telegramId);
+        setTelegramUsername(telegramUser.username);
+        setTelegramWebApp(window.Telegram.WebApp);
 
         // Apply Telegram theme
         const colorScheme = getColorScheme();
@@ -50,22 +52,24 @@ const GameComponent: React.FC = () => {
       }
     };
 
-    initAuth();
+    if (window.Telegram) {
+      initAuth();
+    }
   }, []);
 
   const { data: user, isLoading: isUserLoading, refetch: refetchUserData } = useQuery<User & { income: number }>({
-    queryKey: ['user', userId],
+    queryKey: ['user', telegramId],
     queryFn: async () => {
-      if (!userId) throw new Error('No user ID');
+      if (!telegramId) throw new Error('No Telegram ID');
       const response = await fetch(`${API_URL}/api/game`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'init', userId }),
+        body: JSON.stringify({ action: 'init', data: { telegramId } }),
       });
       if (!response.ok) throw new Error('Failed to fetch user data');
       return response.json();
     },
-    enabled: !!userId,
+    enabled: !!telegramId,
   });
 
   const { data: gameData, isLoading: isGameDataLoading } = useQuery<GameData>({
@@ -90,17 +94,17 @@ const GameComponent: React.FC = () => {
 
   const syncWithServer = useMutation<User & { income: number }, Error, number>({
     mutationFn: async (newCoinBalance: number) => {
-      if (!userId) throw new Error('No user ID');
+      if (!user) throw new Error('No user data');
       const response = await fetch(`${API_URL}/api/game`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'sync', userId, data: { cryptoCoins: newCoinBalance } }),
+        body: JSON.stringify({ action: 'sync', data: { userId: user.id, cryptoCoins: newCoinBalance } }),
       });
       if (!response.ok) throw new Error('Failed to sync with server');
       return response.json();
     },
     onSuccess: (data) => {
-      queryClient.setQueryData(['user', userId], data);
+      queryClient.setQueryData(['user', telegramId], data);
       setIncome(data.income);
       setOfflineEarnings(0); // Reset offline earnings after sync
     },
@@ -135,11 +139,11 @@ const GameComponent: React.FC = () => {
 
   const clickMutation = useMutation<User & { income: number }, Error, void>({
     mutationFn: async () => {
-      if (!userId) throw new Error('No user ID');
+      if (!user) throw new Error('No user data');
       const response = await fetch(`${API_URL}/api/game`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'click', userId }),
+        body: JSON.stringify({ action: 'click', data: { userId: user.id } }),
       });
       if (!response.ok) throw new Error('Failed to process click');
       return response.json();
@@ -147,7 +151,7 @@ const GameComponent: React.FC = () => {
     onSuccess: (data) => {
       setLocalCoins(data.cryptoCoins);
       setIncome(data.income);
-      queryClient.setQueryData(['user', userId], data);
+      queryClient.setQueryData(['user', telegramId], data);
     },
     onError: () => {
       toast.error("Failed to process click. Please try again.");
@@ -156,11 +160,11 @@ const GameComponent: React.FC = () => {
 
   const buyBusinessMutation = useMutation<User & { income: number }, Error, BusinessType>({
     mutationFn: async (businessType: BusinessType) => {
-      if (!userId) throw new Error('No user ID');
+      if (!user) throw new Error('No user data');
       const response = await fetch(`${API_URL}/api/game`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'buyBusiness', userId, data: { businessType } }),
+        body: JSON.stringify({ action: 'buyBusiness', data: { userId: user.id, businessType } }),
       });
       if (!response.ok) throw new Error('Failed to buy business');
       return response.json();
@@ -168,7 +172,7 @@ const GameComponent: React.FC = () => {
     onSuccess: (data) => {
       setLocalCoins(data.cryptoCoins);
       setIncome(data.income);
-      queryClient.setQueryData(['user', userId], data);
+      queryClient.setQueryData(['user', telegramId], data);
       toast.success(`Successfully purchased ${data.businesses[data.businesses.length - 1].type}`);
     },
     onError: () => {
@@ -178,11 +182,11 @@ const GameComponent: React.FC = () => {
 
   const buyUpgradeMutation = useMutation<User & { income: number }, Error, UpgradeType>({
     mutationFn: async (upgradeId: UpgradeType) => {
-      if (!userId) throw new Error('No user ID');
+      if (!user) throw new Error('No user data');
       const response = await fetch(`${API_URL}/api/game`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'buyUpgrade', userId, data: { upgradeId } }),
+        body: JSON.stringify({ action: 'buyUpgrade', data: { userId: user.id, upgradeId } }),
       });
       if (!response.ok) throw new Error('Failed to buy upgrade');
       return response.json();
@@ -190,7 +194,7 @@ const GameComponent: React.FC = () => {
     onSuccess: (data) => {
       setLocalCoins(data.cryptoCoins);
       setIncome(data.income);
-      queryClient.setQueryData(['user', userId], data);
+      queryClient.setQueryData(['user', telegramId], data);
       toast.success(`Successfully purchased ${data.upgrades[data.upgrades.length - 1].type} upgrade`);
     },
     onError: () => {
@@ -200,8 +204,12 @@ const GameComponent: React.FC = () => {
 
   const handleButtonClick = () => {
     const now = Date.now();
-    if (now - lastClickTimeRef.current < CLICK_COOLDOWN) return;
+    if (now - lastClickTimeRef.current < CLICK_COOLDOWN) {
+      console.debug('Button click ignored due to cooldown');
+      return;
+    }
     lastClickTimeRef.current = now;
+    console.debug('Button clicked, triggering clickMutation');
     clickMutation.mutate();
   };
 
