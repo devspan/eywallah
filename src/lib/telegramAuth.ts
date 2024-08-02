@@ -9,7 +9,6 @@ declare global {
   }
 }
 
-const BOT_TOKEN = process.env.NEXT_PUBLIC_BOT_TOKEN;
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 export const initTelegramAuth = async (): Promise<void> => {
@@ -41,12 +40,10 @@ export const authenticateUser = async (): Promise<{ id: string; telegramId: stri
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bot ${BOT_TOKEN}`
       },
       body: JSON.stringify({
         telegramId: telegramUser.id.toString(),
         username: telegramUser.username || null,
-        // Include any other necessary data from telegramUser
       })
     });
 
