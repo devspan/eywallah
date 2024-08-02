@@ -1,3 +1,4 @@
+// src/components/GameComponent.tsx
 "use client"
 import React, { useEffect, useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -9,36 +10,68 @@ import { BUSINESSES, UPGRADES, PRESTIGE_COST, calculateIncome, calculateBusiness
 import { User, BusinessType, UpgradeType, GameData } from '@/types';
 import { Coins, TrendingUp, Zap } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import { initTelegramAuth, authenticateUser, getColorScheme, getThemeParams, isExpanded, expand } from '@/lib/telegramAuth';
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
 const SYNC_INTERVAL = 10000; // 10 seconds
 const CLICK_COOLDOWN = 500; // 0.5 seconds
 
 const GameComponent: React.FC = () => {
   const queryClient = useQueryClient();
-  const userId = '12345'; // Mock user ID, replace with actual user ID
+  const [userId, setUserId] = useState<string | null>(null);
+  const [telegramUsername, setTelegramUsername] = useState<string | null>(null);
   const [localCoins, setLocalCoins] = useState(0);
   const [income, setIncome] = useState(0);
   const [offlineEarnings, setOfflineEarnings] = useState(0);
   const lastClickTimeRef = useRef(0);
   const lastSyncTimeRef = useRef(0);
 
+  useEffect(() => {
+    const initAuth = async () => {
+      try {
+        await initTelegramAuth();
+        const user = await authenticateUser();
+        setUserId(user.id);
+        setTelegramUsername(user.username);
+
+        // Apply Telegram theme
+        const colorScheme = getColorScheme();
+        const themeParams = getThemeParams();
+        document.documentElement.setAttribute('data-theme', colorScheme);
+        // Apply theme params to your CSS variables or styling logic here
+
+        // Expand the app if it's not already expanded
+        if (!isExpanded()) {
+          expand();
+        }
+      } catch (error) {
+        console.error('Failed to initialize Telegram auth:', error);
+        toast.error('Failed to initialize Telegram authentication');
+      }
+    };
+
+    initAuth();
+  }, []);
+
   const { data: user, isLoading: isUserLoading, refetch: refetchUserData } = useQuery<User & { income: number }>({
     queryKey: ['user', userId],
     queryFn: async () => {
-      const response = await fetch('/api/game', {
+      if (!userId) throw new Error('No user ID');
+      const response = await fetch(`${API_URL}/game/init`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'init', userId }),
+        body: JSON.stringify({ userId }),
       });
       if (!response.ok) throw new Error('Failed to fetch user data');
       return response.json();
     },
+    enabled: !!userId,
   });
 
   const { data: gameData, isLoading: isGameDataLoading } = useQuery<GameData>({
     queryKey: ['gameData'],
     queryFn: async () => {
-      const response = await fetch('/api/game');
+      const response = await fetch(`${API_URL}/game/data`);
       if (!response.ok) throw new Error('Failed to fetch game data');
       return response.json();
     },
@@ -57,10 +90,11 @@ const GameComponent: React.FC = () => {
 
   const syncWithServer = useMutation<User & { income: number }, Error, number>({
     mutationFn: async (newCoinBalance: number) => {
-      const response = await fetch('/api/game', {
+      if (!userId) throw new Error('No user ID');
+      const response = await fetch(`${API_URL}/game/sync`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'sync', userId, data: { cryptoCoins: newCoinBalance } }),
+        body: JSON.stringify({ userId, cryptoCoins: newCoinBalance }),
       });
       if (!response.ok) throw new Error('Failed to sync with server');
       return response.json();
@@ -101,10 +135,11 @@ const GameComponent: React.FC = () => {
 
   const clickMutation = useMutation<User & { income: number }, Error, void>({
     mutationFn: async () => {
-      const response = await fetch('/api/game', {
+      if (!userId) throw new Error('No user ID');
+      const response = await fetch(`${API_URL}/game/click`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'click', userId }),
+        body: JSON.stringify({ userId }),
       });
       if (!response.ok) throw new Error('Failed to process click');
       return response.json();
@@ -121,10 +156,11 @@ const GameComponent: React.FC = () => {
 
   const buyBusinessMutation = useMutation<User & { income: number }, Error, BusinessType>({
     mutationFn: async (businessType: BusinessType) => {
-      const response = await fetch('/api/game', {
+      if (!userId) throw new Error('No user ID');
+      const response = await fetch(`${API_URL}/game/buy-business`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'buyBusiness', userId, data: { businessType } }),
+        body: JSON.stringify({ userId, businessType }),
       });
       if (!response.ok) throw new Error('Failed to buy business');
       return response.json();
@@ -142,10 +178,11 @@ const GameComponent: React.FC = () => {
 
   const buyUpgradeMutation = useMutation<User & { income: number }, Error, UpgradeType>({
     mutationFn: async (upgradeId: UpgradeType) => {
-      const response = await fetch('/api/game', {
+      if (!userId) throw new Error('No user ID');
+      const response = await fetch(`${API_URL}/game/buy-upgrade`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'buyUpgrade', userId, data: { upgradeId } }),
+        body: JSON.stringify({ userId, upgradeId }),
       });
       if (!response.ok) throw new Error('Failed to buy upgrade');
       return response.json();
@@ -172,6 +209,13 @@ const GameComponent: React.FC = () => {
 
   return (
     <div className="container mx-auto p-6">
+      {telegramUsername && (
+        <Card className="mb-6">
+          <CardContent>
+            <p className="text-lg font-semibold">Welcome, {telegramUsername}!</p>
+          </CardContent>
+        </Card>
+      )}
       <Card className="mb-6">
         <CardContent>
           <p className="text-2xl font-semibold">Crypto Coins: {localCoins.toFixed(2)}</p>

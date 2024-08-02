@@ -1,7 +1,9 @@
+// src/app/layout.tsx
 import { Manrope } from 'next/font/google'
 import { cn } from '@/lib/utils'
 import './globals.css'
 import { Providers } from './providers'
+import Script from 'next/script'
 
 const fontHeading = Manrope({
   subsets: ['latin'],
@@ -27,6 +29,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
+      <head>
+        <Script src="https://telegram.org/js/telegram-web-app.js" strategy="beforeInteractive" />
+      </head>
       <body 
         className={cn(
           'antialiased min-h-screen bg-background',
