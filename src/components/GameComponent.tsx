@@ -57,10 +57,10 @@ const GameComponent: React.FC = () => {
     queryKey: ['user', userId],
     queryFn: async () => {
       if (!userId) throw new Error('No user ID');
-      const response = await fetch(`${API_URL}/game/init`, {
+      const response = await fetch(`${API_URL}/api/game`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId }),
+        body: JSON.stringify({ action: 'init', userId }),
       });
       if (!response.ok) throw new Error('Failed to fetch user data');
       return response.json();
@@ -71,7 +71,7 @@ const GameComponent: React.FC = () => {
   const { data: gameData, isLoading: isGameDataLoading } = useQuery<GameData>({
     queryKey: ['gameData'],
     queryFn: async () => {
-      const response = await fetch(`${API_URL}/game/data`);
+      const response = await fetch(`${API_URL}/api/game`);
       if (!response.ok) throw new Error('Failed to fetch game data');
       return response.json();
     },
@@ -91,10 +91,10 @@ const GameComponent: React.FC = () => {
   const syncWithServer = useMutation<User & { income: number }, Error, number>({
     mutationFn: async (newCoinBalance: number) => {
       if (!userId) throw new Error('No user ID');
-      const response = await fetch(`${API_URL}/game/sync`, {
+      const response = await fetch(`${API_URL}/api/game`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, cryptoCoins: newCoinBalance }),
+        body: JSON.stringify({ action: 'sync', userId, data: { cryptoCoins: newCoinBalance } }),
       });
       if (!response.ok) throw new Error('Failed to sync with server');
       return response.json();
@@ -136,10 +136,10 @@ const GameComponent: React.FC = () => {
   const clickMutation = useMutation<User & { income: number }, Error, void>({
     mutationFn: async () => {
       if (!userId) throw new Error('No user ID');
-      const response = await fetch(`${API_URL}/game/click`, {
+      const response = await fetch(`${API_URL}/api/game`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId }),
+        body: JSON.stringify({ action: 'click', userId }),
       });
       if (!response.ok) throw new Error('Failed to process click');
       return response.json();
@@ -157,10 +157,10 @@ const GameComponent: React.FC = () => {
   const buyBusinessMutation = useMutation<User & { income: number }, Error, BusinessType>({
     mutationFn: async (businessType: BusinessType) => {
       if (!userId) throw new Error('No user ID');
-      const response = await fetch(`${API_URL}/game/buy-business`, {
+      const response = await fetch(`${API_URL}/api/game`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, businessType }),
+        body: JSON.stringify({ action: 'buyBusiness', userId, data: { businessType } }),
       });
       if (!response.ok) throw new Error('Failed to buy business');
       return response.json();
@@ -179,10 +179,10 @@ const GameComponent: React.FC = () => {
   const buyUpgradeMutation = useMutation<User & { income: number }, Error, UpgradeType>({
     mutationFn: async (upgradeId: UpgradeType) => {
       if (!userId) throw new Error('No user ID');
-      const response = await fetch(`${API_URL}/game/buy-upgrade`, {
+      const response = await fetch(`${API_URL}/api/game`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, upgradeId }),
+        body: JSON.stringify({ action: 'buyUpgrade', userId, data: { upgradeId } }),
       });
       if (!response.ok) throw new Error('Failed to buy upgrade');
       return response.json();

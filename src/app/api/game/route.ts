@@ -1,3 +1,4 @@
+// src/app/api/game/route.ts
 import { NextResponse } from 'next/server';
 import { 
   getUserById, createUser, updateUser, addBusiness, 
@@ -10,6 +11,11 @@ import {
 } from '@/lib/gameLogic';
 import { BusinessType, UpgradeType } from '@/types';
 import { logger } from '@/lib/logger';
+
+export async function GET() {
+  logger.debug('Fetching game data');
+  return NextResponse.json({ BUSINESSES, UPGRADES });
+}
 
 export async function POST(request: Request) {
   const { action, userId, data } = await request.json();
@@ -120,8 +126,4 @@ export async function POST(request: Request) {
     logger.error('Error in POST handler', error as Error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
-}
-
-export async function GET() {
-  return NextResponse.json({ BUSINESSES, UPGRADES });
 }
