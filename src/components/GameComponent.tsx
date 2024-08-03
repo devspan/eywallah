@@ -1,9 +1,10 @@
 "use client";
 import React, { useEffect, useRef, useState } from 'react';
+import Image from 'next/image';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { Coins, Clock } from 'lucide-react';
+import { Clock } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { initTelegramAuth, authenticateUser, getProfilePhoto } from '@/lib/telegramAuth';
 import { useGameStore } from '@/lib/store';
@@ -125,7 +126,22 @@ const GameComponent: React.FC = () => {
     setTimeout(() => floatingText.remove(), 1000);
   };
 
-  if (isLoading || isUserLoading) return <div className="text-center text-lg text-white animate-spin">Loading...</div>;
+  if (isLoading || isUserLoading) {
+    return (
+      <div className="fixed inset-0 w-screen h-screen flex items-center justify-center bg-gray-900">
+        <div className="relative w-full h-full">
+          <Image
+            src="/splash.png"
+            alt="Loading..."
+            layout="fill"
+            objectFit="cover"
+            priority
+            className="animate-pulse"
+          />
+        </div>
+      </div>
+    );
+  }
 
   if (!user) return <div className="text-center text-lg text-red-500">Error: Unable to load user data</div>;
 
@@ -139,8 +155,8 @@ const GameComponent: React.FC = () => {
             {profilePhoto ? (
               <img src={profilePhoto} alt="Profile" className="w-12 h-12 rounded-full mr-2" />
             ) : (
-              <div className="bg-[#2c3e50] rounded-full p-2 mr-2">
-                <Coins className="h-6 w-6 text-yellow-400" />
+              <div className="bg-[#2c3e50] rounded-full p-2 mr-2 w-12 h-12 flex items-center justify-center">
+                <Image src="/bitcoin.png" alt="Bitcoin" width={32} height={32} />
               </div>
             )}
             <div>
@@ -158,9 +174,15 @@ const GameComponent: React.FC = () => {
           <div 
             ref={coinRef}
             onClick={handleCoinClick}
-            className="bg-yellow-500 rounded-full p-8 mb-4 cursor-pointer transition-transform duration-100 active:scale-95 relative overflow-hidden"
+            className="bg-yellow-500 rounded-full w-32 h-32 mb-4 cursor-pointer transition-transform duration-100 active:scale-95 relative overflow-hidden"
           >
-            <Coins className="h-24 w-24 text-yellow-900" />
+            <Image
+              src="/bitcoin.png"
+              alt="Bitcoin"
+              layout="fill"
+              objectFit="cover"
+              className="p-2"
+            />
           </div>
           <p className="text-4xl font-bold text-yellow-400">{Math.floor(localCoins).toLocaleString()}</p>
           <p className="text-gray-400">Crypto Coins</p>

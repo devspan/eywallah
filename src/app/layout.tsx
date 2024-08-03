@@ -3,7 +3,6 @@ import { cn } from '@/lib/utils'
 import './globals.css'
 import { Providers } from './providers'
 import Script from 'next/script'
-import NavBar from '@/components/NavBar'
 
 const fontHeading = Manrope({
   subsets: ['latin'],
@@ -30,7 +29,10 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
-        <Script src="https://telegram.org/js/telegram-web-app.js" strategy="beforeInteractive" />
+        <Script 
+          src="https://telegram.org/js/telegram-web-app.js" 
+          strategy="beforeInteractive"
+        />
       </head>
       <body
         className={cn(
@@ -41,7 +43,6 @@ export default function RootLayout({
       >
         <Providers>
           {children}
-          <NavBar />
         </Providers>
       </body>
     </html>
