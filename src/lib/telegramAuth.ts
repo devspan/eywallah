@@ -1,4 +1,3 @@
-// src/lib/telegramAuth.ts
 import { logger } from './logger';
 
 declare global {
@@ -16,22 +15,11 @@ export const initTelegramAuth = async (): Promise<void> => {
   try {
     logger.debug('Initializing Telegram Web App');
     await window.Telegram.WebApp.ready();
-
-    // Add event listener for button click
-    window.Telegram.WebApp.MainButton.onClick(handleButtonClick);
-
     logger.debug('Telegram Web App initialized successfully');
   } catch (error) {
     logger.error('Failed to initialize Telegram Web App', error as Error);
     throw error;
   }
-};
-
-const handleButtonClick = (): void => {
-  logger.debug('Button clicked');
-  // Perform actions to start the game here
-  // For example, you can navigate to the game page or trigger a state change
-  window.location.href = '/game';
 };
 
 export const getTelegramUser = (): any => {
@@ -54,7 +42,6 @@ export const authenticateUser = async (): Promise<{ id: string; telegramId: stri
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bot ${BOT_TOKEN}`
       },
       body: JSON.stringify({
         telegramId: telegramUser.id.toString(),
@@ -116,4 +103,46 @@ export const readTextFromClipboard = (callback: (text: string) => void): void =>
 
 export const showAlert = (message: string, callback?: () => void): void => {
   window.Telegram.WebApp.showAlert(message, callback);
+};
+
+export const getProfilePhoto = async (telegramId: string): Promise<string | null> => {
+  try {
+    logger.debug('Fetching profile photo', { telegramId });
+    const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/getUserProfilePhotos`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: telegramId, limit: 1 }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch profile photos');
+    }
+
+    const data = await response.json();
+    if (data.ok && data.result.photos.length > 0) {
+      const fileId = data.result.photos[0][0].file_id;
+      const fileResponse = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/getFile`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file_id: fileId }),
+      });
+
+      if (!fileResponse.ok) {
+        throw new Error('Failed to get file path');
+      }
+
+      const fileData = await fileResponse.json();
+      if (fileData.ok) {
+        const photoUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${fileData.result.file_path}`;
+        logger.debug('Profile photo fetched successfully', { telegramId, photoUrl });
+        return photoUrl;
+      }
+    }
+
+    logger.debug('No profile photo found', { telegramId });
+    return null;
+  } catch (error) {
+    logger.error('Error fetching profile photo:', error as Error);
+    return null;
+  }
 };

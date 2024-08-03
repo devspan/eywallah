@@ -1,5 +1,7 @@
 export type User = {
   id: string;
+  telegramId: string;
+  username: string | null;
   cryptoCoins: number;
   lastActive: Date;
   prestigePoints: number;

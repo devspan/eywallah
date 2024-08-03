@@ -25,16 +25,41 @@
     --ring: 240 5% 90%;
     --radius: 0.5rem;
   }
-}
 
-@layer base {
   * {
     @apply border-border;
   }
+
   body {
     @apply bg-background text-foreground font-body;
   }
+
   h1, h2, h3, h4, h5, h6 {
     @apply font-heading;
   }
+
+  /* Coin animation */
+  @keyframes addCoin {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.2); }
+    100% { transform: scale(1); }
+  }
+
+  .animate-add-coin {
+    animation: addCoin 0.5s ease-in-out;
+  }
+
+  /* Additional styles for the card */
+  .card {
+    @apply bg-card text-card-foreground rounded-lg p-6 sm:p-8 lg:p-10;
+  }
+}
+
+@keyframes float-up {
+  0% { transform: translateY(0); opacity: 1; }
+  100% { transform: translateY(-50px); opacity: 0; }
+}
+
+.animate-float-up {
+  animation: float-up 1s ease-out forwards;
 }

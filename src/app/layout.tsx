@@ -1,9 +1,9 @@
-// src/app/layout.tsx
 import { Manrope } from 'next/font/google'
 import { cn } from '@/lib/utils'
 import './globals.css'
 import { Providers } from './providers'
 import Script from 'next/script'
+import NavBar from '@/components/NavBar'
 
 const fontHeading = Manrope({
   subsets: ['latin'],
@@ -32,7 +32,7 @@ export default function RootLayout({
       <head>
         <Script src="https://telegram.org/js/telegram-web-app.js" strategy="beforeInteractive" />
       </head>
-      <body 
+      <body
         className={cn(
           'antialiased min-h-screen bg-background',
           fontHeading.variable,
@@ -41,6 +41,7 @@ export default function RootLayout({
       >
         <Providers>
           {children}
+          <NavBar />
         </Providers>
       </body>
     </html>

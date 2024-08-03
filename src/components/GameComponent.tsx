@@ -1,31 +1,30 @@
-// src/components/GameComponent.tsx
-"use client"
-import React, { useEffect, useState, useRef } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Button } from "@/components/ui/button";
+"use client";
+import React, { useEffect, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { BUSINESSES, UPGRADES, PRESTIGE_COST, calculateIncome, calculateBusinessCost } from '@/lib/gameLogic';
-import { User, BusinessType, UpgradeType, GameData } from '@/types';
-import { Coins, TrendingUp, Zap } from 'lucide-react';
+import { Coins, Clock } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import { initTelegramAuth, authenticateUser, getColorScheme, getThemeParams, isExpanded, expand } from '@/lib/telegramAuth';
+import { initTelegramAuth, authenticateUser, getProfilePhoto } from '@/lib/telegramAuth';
+import { useGameStore } from '@/lib/store';
+import NavBar from './NavBar';
+import { PRESTIGE_COST, MAX_TOTAL_SUPPLY, calculateClickPower, calculateRank, estimateTimeToExhaustSupply, calculateIncome } from '@/lib/gameLogic';
+import { User } from '@/types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 const SYNC_INTERVAL = 10000; // 10 seconds
-const CLICK_COOLDOWN = 500; // 0.5 seconds
+const CLICK_COOLDOWN = 100; // 0.1 seconds
 
 const GameComponent: React.FC = () => {
-  const queryClient = useQueryClient();
+  const { user, localCoins, income, setUser, updateLocalCoins, syncWithServer } = useGameStore();
+  const [isLoading, setIsLoading] = useState(true);
   const [telegramId, setTelegramId] = useState<string | null>(null);
-  const [telegramUsername, setTelegramUsername] = useState<string | null>(null);
-  const [telegramWebApp, setTelegramWebApp] = useState<any>(null);
-  const [localCoins, setLocalCoins] = useState(0);
-  const [income, setIncome] = useState(0);
-  const [offlineEarnings, setOfflineEarnings] = useState(0);
+  const [clickPower, setClickPower] = useState(0);
+  const [profilePhoto, setProfilePhoto] = useState<string | null>(null);
+  const [estimatedExhaustTime, setEstimatedExhaustTime] = useState<string>('');
   const lastClickTimeRef = useRef(0);
   const lastSyncTimeRef = useRef(0);
+  const coinRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const initAuth = async () => {
@@ -33,31 +32,22 @@ const GameComponent: React.FC = () => {
         await initTelegramAuth();
         const telegramUser = await authenticateUser();
         setTelegramId(telegramUser.telegramId);
-        setTelegramUsername(telegramUser.username);
-        setTelegramWebApp(window.Telegram.WebApp);
-
-        // Apply Telegram theme
-        const colorScheme = getColorScheme();
-        const themeParams = getThemeParams();
-        document.documentElement.setAttribute('data-theme', colorScheme);
-        // Apply theme params to your CSS variables or styling logic here
-
-        // Expand the app if it's not already expanded
-        if (!isExpanded()) {
-          expand();
+        if (telegramUser.telegramId) {
+          const photo = await getProfilePhoto(telegramUser.telegramId);
+          setProfilePhoto(photo);
         }
       } catch (error) {
         console.error('Failed to initialize Telegram auth:', error);
         toast.error('Failed to initialize Telegram authentication');
+      } finally {
+        setIsLoading(false);
       }
     };
 
-    if (window.Telegram) {
-      initAuth();
-    }
+    initAuth();
   }, []);
 
-  const { data: user, isLoading: isUserLoading, refetch: refetchUserData } = useQuery<User & { income: number }>({
+  const { data: userData, error: userError, isLoading: isUserLoading } = useQuery<User>({
     queryKey: ['user', telegramId],
     queryFn: async () => {
       if (!telegramId) throw new Error('No Telegram ID');
@@ -72,237 +62,150 @@ const GameComponent: React.FC = () => {
     enabled: !!telegramId,
   });
 
-  const { data: gameData, isLoading: isGameDataLoading } = useQuery<GameData>({
-    queryKey: ['gameData'],
-    queryFn: async () => {
-      const response = await fetch(`${API_URL}/api/game`);
-      if (!response.ok) throw new Error('Failed to fetch game data');
-      return response.json();
-    },
-  });
+  useEffect(() => {
+    if (userData) {
+      setUser(userData);
+      const calculatedIncome = calculateIncome(userData);
+      const calculatedClickPower = calculateClickPower(userData);
+      setClickPower(calculatedClickPower);
+      setEstimatedExhaustTime(estimateTimeToExhaustSupply(userData.cryptoCoins, calculatedIncome));
+    }
+  }, [userData, setUser]);
 
   useEffect(() => {
-    if (user) {
-      setLocalCoins(user.cryptoCoins);
-      setIncome(user.income);
-      setOfflineEarnings(user.offlineEarnings);
-      if (user.offlineEarnings > 0) {
-        toast.success(`Welcome back! You earned ${user.offlineEarnings.toFixed(2)} coins while away.`);
-      }
+    if (userError) {
+      console.error('Failed to fetch user data:', userError);
+      toast.error('Failed to fetch user data');
     }
-  }, [user]);
-
-  const syncWithServer = useMutation<User & { income: number }, Error, number>({
-    mutationFn: async (newCoinBalance: number) => {
-      if (!user) throw new Error('No user data');
-      const response = await fetch(`${API_URL}/api/game`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'sync', data: { userId: user.id, cryptoCoins: newCoinBalance } }),
-      });
-      if (!response.ok) throw new Error('Failed to sync with server');
-      return response.json();
-    },
-    onSuccess: (data) => {
-      queryClient.setQueryData(['user', telegramId], data);
-      setIncome(data.income);
-      setOfflineEarnings(0); // Reset offline earnings after sync
-    },
-    onError: () => {
-      toast.error("Failed to sync game progress. Please check your connection.");
-    },
-  });
+  }, [userError]);
 
   useEffect(() => {
     if (user) {
       const incomeTimer = setInterval(() => {
-        setLocalCoins(prev => {
-          const newCoins = prev + income / 10;
-          return Math.round(newCoins * 100) / 100; // Round to 2 decimal places
-        });
+        updateLocalCoins(income / 10);
       }, 100);
 
       const syncTimer = setInterval(() => {
         const now = Date.now();
         if (now - lastSyncTimeRef.current >= SYNC_INTERVAL) {
           lastSyncTimeRef.current = now;
-          syncWithServer.mutate(localCoins);
+          syncWithServer();
         }
-      }, 1000); // Check every second, but only sync if SYNC_INTERVAL has passed
+      }, 1000);
 
       return () => {
         clearInterval(incomeTimer);
         clearInterval(syncTimer);
       };
     }
-  }, [user, income, localCoins, syncWithServer]);
+  }, [user, income, updateLocalCoins, syncWithServer]);
 
-  const clickMutation = useMutation<User & { income: number }, Error, void>({
-    mutationFn: async () => {
-      if (!user) throw new Error('No user data');
-      const response = await fetch(`${API_URL}/api/game`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'click', data: { userId: user.id } }),
-      });
-      if (!response.ok) throw new Error('Failed to process click');
-      return response.json();
-    },
-    onSuccess: (data) => {
-      setLocalCoins(data.cryptoCoins);
-      setIncome(data.income);
-      queryClient.setQueryData(['user', telegramId], data);
-    },
-    onError: () => {
-      toast.error("Failed to process click. Please try again.");
-    },
-  });
-
-  const buyBusinessMutation = useMutation<User & { income: number }, Error, BusinessType>({
-    mutationFn: async (businessType: BusinessType) => {
-      if (!user) throw new Error('No user data');
-      const response = await fetch(`${API_URL}/api/game`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'buyBusiness', data: { userId: user.id, businessType } }),
-      });
-      if (!response.ok) throw new Error('Failed to buy business');
-      return response.json();
-    },
-    onSuccess: (data) => {
-      setLocalCoins(data.cryptoCoins);
-      setIncome(data.income);
-      queryClient.setQueryData(['user', telegramId], data);
-      toast.success(`Successfully purchased ${data.businesses[data.businesses.length - 1].type}`);
-    },
-    onError: () => {
-      toast.error("Failed to buy business. Please try again.");
-    },
-  });
-
-  const buyUpgradeMutation = useMutation<User & { income: number }, Error, UpgradeType>({
-    mutationFn: async (upgradeId: UpgradeType) => {
-      if (!user) throw new Error('No user data');
-      const response = await fetch(`${API_URL}/api/game`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'buyUpgrade', data: { userId: user.id, upgradeId } }),
-      });
-      if (!response.ok) throw new Error('Failed to buy upgrade');
-      return response.json();
-    },
-    onSuccess: (data) => {
-      setLocalCoins(data.cryptoCoins);
-      setIncome(data.income);
-      queryClient.setQueryData(['user', telegramId], data);
-      toast.success(`Successfully purchased ${data.upgrades[data.upgrades.length - 1].type} upgrade`);
-    },
-    onError: () => {
-      toast.error("Failed to buy upgrade. Please try again.");
-    },
-  });
-
-  const handleButtonClick = () => {
+  const handleCoinClick = () => {
     const now = Date.now();
     if (now - lastClickTimeRef.current < CLICK_COOLDOWN) {
-      console.debug('Button click ignored due to cooldown');
       return;
     }
     lastClickTimeRef.current = now;
-    console.debug('Button clicked, triggering clickMutation');
-    clickMutation.mutate();
+    updateLocalCoins(clickPower);
+
+    // Animation
+    if (coinRef.current) {
+      coinRef.current.classList.add('animate-bounce');
+      setTimeout(() => {
+        coinRef.current?.classList.remove('animate-bounce');
+      }, 300);
+    }
+
+    // Floating text animation
+    const floatingText = document.createElement('div');
+    floatingText.textContent = `+${clickPower.toFixed(2)}`;
+    floatingText.className = 'absolute text-black-400 font-bold text-lg animate-float-up';
+    floatingText.style.left = `${Math.random() * 80 + 10}%`;
+    coinRef.current?.appendChild(floatingText);
+    setTimeout(() => floatingText.remove(), 1000);
   };
 
-  if (isUserLoading || isGameDataLoading) return <div>Loading...</div>;
+  if (isLoading || isUserLoading) return <div className="text-center text-lg text-white animate-spin">Loading...</div>;
+
+  if (!user) return <div className="text-center text-lg text-red-500">Error: Unable to load user data</div>;
+
+  const userRank = calculateRank(user.cryptoCoins);
 
   return (
-    <div className="container mx-auto p-6">
-      {telegramUsername && (
-        <Card className="mb-6">
-          <CardContent>
-            <p className="text-lg font-semibold">Welcome, {telegramUsername}!</p>
+    <div className="min-h-screen bg-gray-900 text-white flex flex-col">
+      <div className="flex-grow bg-[#1c2333] w-full p-4">
+        <div className="flex justify-between items-start mb-8">
+          <div className="flex items-center">
+            {profilePhoto ? (
+              <img src={profilePhoto} alt="Profile" className="w-12 h-12 rounded-full mr-2" />
+            ) : (
+              <div className="bg-[#2c3e50] rounded-full p-2 mr-2">
+                <Coins className="h-6 w-6 text-yellow-400" />
+              </div>
+            )}
+            <div>
+              <h1 className="font-bold text-lg">{user.username || 'Crypto Capitalist'}</h1>
+              <p className="text-sm text-gray-400">{userRank}</p>
+            </div>
+          </div>
+          <div className="text-right">
+            <p className="text-sm text-gray-400">Prestige Points</p>
+            <p className="font-bold">{user.prestigePoints}</p>
+          </div>
+        </div>
+
+        <div className="flex flex-col items-center justify-center mb-8">
+          <div 
+            ref={coinRef}
+            onClick={handleCoinClick}
+            className="bg-yellow-500 rounded-full p-8 mb-4 cursor-pointer transition-transform duration-100 active:scale-95 relative overflow-hidden"
+          >
+            <Coins className="h-24 w-24 text-yellow-900" />
+          </div>
+          <p className="text-4xl font-bold text-yellow-400">{Math.floor(localCoins).toLocaleString()}</p>
+          <p className="text-gray-400">Crypto Coins</p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4 mb-4">
+          <Card className="bg-[#2c3e50]">
+            <CardContent className="p-4">
+              <p className="text-gray-400">Income</p>
+              <p className="text-xl font-bold">{income.toFixed(2)}/s</p>
+            </CardContent>
+          </Card>
+          <Card className="bg-[#2c3e50]">
+            <CardContent className="p-4">
+              <p className="text-gray-400">Click Power</p>
+              <p className="text-xl font-bold">{clickPower.toFixed(2)}</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="mt-4">
+          <p className="text-sm text-gray-400 mb-1">Progress to Next Prestige</p>
+          <Progress 
+            value={Math.min((localCoins / PRESTIGE_COST) * 100, 100)} 
+            className="h-2 bg-gray-700"
+          />
+        </div>
+
+        <Card className="mt-4 bg-[#2c3e50]">
+          <CardContent className="p-4">
+            <div className="flex items-center mb-2">
+              <Clock className="h-5 w-5 mr-2 text-gray-400" />
+              <p className="text-sm text-gray-400">Estimated Time to Exhaust Supply</p>
+            </div>
+            <p className="text-md font-bold">{estimatedExhaustTime}</p>
           </CardContent>
         </Card>
-      )}
-      <Card className="mb-6">
-        <CardContent>
-          <p className="text-2xl font-semibold">Crypto Coins: {localCoins.toFixed(2)}</p>
-          <p>Income: {income.toFixed(2)} / s</p>
-          {offlineEarnings > 0 && (
-            <p className="text-green-500">Offline Earnings: +{offlineEarnings.toFixed(2)}</p>
-          )}
-          <Progress value={Math.min((localCoins / PRESTIGE_COST) * 100, 100)} className="mt-4" />
-          <Button onClick={handleButtonClick} className="mt-6 w-full">
-            <Coins className="mr-2 h-5 w-5" /> Click for Coins
-          </Button>
-        </CardContent>
-      </Card>
 
-      <Tabs defaultValue="businesses" className="mb-6">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="businesses">Businesses</TabsTrigger>
-          <TabsTrigger value="upgrades">Upgrades</TabsTrigger>
-        </TabsList>
-        <TabsContent value="businesses">
-          <Card>
-            <CardContent className="pt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {Object.entries(gameData?.BUSINESSES || {}).map(([type, business]) => {
-                const ownedCount = user?.businesses.find(b => b.type === type)?.count || 0;
-                const cost = calculateBusinessCost(type as BusinessType, ownedCount);
-                return (
-                  <div key={type} className="flex flex-col justify-between p-4 bg-gray-800 rounded-lg">
-                    <div>
-                      <p className="font-medium">{business.name}</p>
-                      <p className="text-sm text-gray-400">Owned: {ownedCount}</p>
-                    </div>
-                    <Button 
-                      onClick={() => buyBusinessMutation.mutate(type as BusinessType)}
-                      disabled={localCoins < cost}
-                      size="sm"
-                      className="mt-2"
-                    >
-                      Buy ({cost.toFixed(0)})
-                    </Button>
-                  </div>
-                );
-              })}
-            </CardContent>
-          </Card>
-        </TabsContent>
-        <TabsContent value="upgrades">
-          <Card>
-            <CardContent className="pt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {Object.entries(gameData?.UPGRADES || {}).map(([id, upgrade]) => (
-                <div key={id} className="flex flex-col justify-between p-4 bg-gray-800 rounded-lg">
-                  <div>
-                    <p className="font-medium">{upgrade.name}</p>
-                    <p className="text-sm text-gray-400">Effect: x{upgrade.effect}</p>
-                  </div>
-                  <Button 
-                    onClick={() => buyUpgradeMutation.mutate(id as UpgradeType)}
-                    disabled={localCoins < upgrade.cost || user?.upgrades.some(u => u.type === id)}
-                    size="sm"
-                    className="mt-2"
-                  >
-                    Buy ({upgrade.cost})
-                  </Button>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+        <div className="mt-4">
+          <p className="text-sm text-gray-400">Total Supply: {MAX_TOTAL_SUPPLY.toLocaleString()} coins</p>
+          <p className="text-sm text-gray-400">Current Circulation: {localCoins.toLocaleString()} coins</p>
+        </div>
+      </div>
 
-      <footer className="mt-6 grid grid-cols-2 gap-4">
-        <Button variant="outline" className="w-full">
-          <TrendingUp className="h-4 w-4 mr-2" />
-          Stats
-        </Button>
-        <Button variant="outline" className="w-full">
-          <Zap className="h-4 w-4 mr-2" />
-          Prestige
-        </Button>
-      </footer>
+      <NavBar />
     </div>
   );
 };
