@@ -1,33 +1,126 @@
+/* Tailwind directives */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 214, 219, 220;
-  --background-end-rgb: 255, 255, 255;
+@layer base {
+  :root {
+    --background: 240 5% 6%;
+    --foreground: 60 5% 90%;
+    --primary: 240 0% 90%;
+    --primary-foreground: 60 0% 0%;
+    --secondary: 240 4% 15%;
+    --secondary-foreground: 60 5% 85%;
+    --accent: 240 0% 13%;
+    --accent-foreground: 60 0% 100%;
+    --destructive: 0 60% 50%;
+    --destructive-foreground: 0 0% 98%;
+    --muted: 240 5% 25%;
+    --muted-foreground: 60 5% 85%;
+    --card: 240 4% 10%;
+    --card-foreground: 60 5% 90%;
+    --popover: 240 5% 15%;
+    --popover-foreground: 60 5% 85%;
+    --border: 240 6% 20%;
+    --input: 240 6% 20%;
+    --ring: 240 5% 90%;
+    --radius: 0.5rem;
+  }
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --foreground-rgb: 255, 255, 255;
-    --background-start-rgb: 0, 0, 0;
-    --background-end-rgb: 0, 0, 0;
-  }
+/* Global styles */
+* {
+  border-color: hsl(var(--border));
 }
 
 body {
-  color: rgb(var(--foreground-rgb));
-  background: linear-gradient(
-      to bottom,
-      transparent,
-      rgb(var(--background-end-rgb))
-    )
-    rgb(var(--background-start-rgb));
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: var(--font-body);
 }
 
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading);
+}
+
+/* Coin animation */
+@keyframes addCoin {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.2); }
+  100% { transform: scale(1); }
+}
+
+.animate-add-coin {
+  animation: addCoin 0.5s ease-in-out;
+}
+
+/* Card styles */
+.card {
+  background-color: hsl(var(--card));
+  color: hsl(var(--card-foreground));
+  border-radius: 0.5rem;
+  padding: 1.5rem;
+}
+
+@media (min-width: 640px) {
+  .card {
+    padding: 2rem;
   }
+}
+
+@media (min-width: 1024px) {
+  .card {
+    padding: 2.5rem;
+  }
+}
+
+/* Spectrum pulse glow animation */
+@keyframes spectrum-pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 5px 2px rgba(255, 0, 0, 0.7),
+                0 0 10px 4px rgba(255, 0, 0, 0.5);
+  }
+  20% {
+    box-shadow: 0 0 8px 4px rgba(255, 165, 0, 0.8),
+                0 0 16px 8px rgba(255, 165, 0, 0.6);
+  }
+  40% {
+    box-shadow: 0 0 10px 5px rgba(255, 255, 0, 0.9),
+                0 0 20px 10px rgba(255, 255, 0, 0.7);
+  }
+  60% {
+    box-shadow: 0 0 8px 4px rgba(0, 255, 0, 0.8),
+                0 0 16px 8px rgba(0, 255, 0, 0.6);
+  }
+  80% {
+    box-shadow: 0 0 5px 2px rgba(0, 0, 255, 0.7),
+                0 0 10px 4px rgba(0, 0, 255, 0.5);
+  }
+}
+
+.animate-spectrum-pulse-glow {
+  animation: spectrum-pulse-glow 10s infinite ease-in-out;
+}
+
+/* Float up animation */
+@keyframes float-up {
+  0% { transform: translateY(0); opacity: 1; }
+  100% { transform: translateY(-50px); opacity: 0; }
+}
+
+.animate-float-up {
+  animation: float-up 1s ease-out forwards;
+}
+
+@keyframes pulse-subtle {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+
+.animate-pulse-subtle {
+  animation: pulse-subtle 2s ease-in-out infinite;
 }
