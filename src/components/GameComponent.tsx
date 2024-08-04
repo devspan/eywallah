@@ -8,19 +8,34 @@ import { toast } from 'react-hot-toast';
 import { useTelegramAuth } from "@/components/TelegramAuthProvider";
 import { useGameStore } from '@/lib/store';
 import NavBar from './NavBar';
-import { PRESTIGE_COST, calculateClickPower, calculateRank, calculateIncome } from '@/lib/gameLogic';
+import { 
+  PRESTIGE_COST, 
+  calculateClickPower, 
+  calculateRank, 
+  calculateIncome, 
+  getCurrentMarketPrice,
+  getGlobalStats
+} from '@/lib/gameLogic';
 import { User } from '@/types';
 import { logger } from '@/lib/logger';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 const SYNC_INTERVAL = 10000; // 10 seconds
 const CLICK_COOLDOWN = 100; // 0.1 seconds
+const GLOBAL_UPDATE_INTERVAL = 5000; // 5 seconds
 
 const GameComponent: React.FC = () => {
   const { user: telegramUser, isAuthenticated } = useTelegramAuth();
   const { user, localCoins, income, setUser, updateLocalCoins, syncWithServer } = useGameStore();
   const [clickPower, setClickPower] = useState(0);
   const [profilePhoto, setProfilePhoto] = useState<string | null>(null);
+  const [marketPrice, setMarketPrice] = useState(1);
+  const [globalStats, setGlobalStats] = useState({
+    blockHeight: 0,
+    difficulty: 0,
+    globalHashRate: 0,
+    marketPrice: 1
+  });
   const lastClickTimeRef = useRef(0);
   const lastSyncTimeRef = useRef(0);
   const coinRef = useRef<HTMLDivElement>(null);
@@ -88,9 +103,17 @@ const GameComponent: React.FC = () => {
         }
       }, 1000);
 
+      const globalUpdateTimer = setInterval(() => {
+        const newMarketPrice = getCurrentMarketPrice();
+        const newGlobalStats = getGlobalStats();
+        setMarketPrice(newMarketPrice);
+        setGlobalStats(newGlobalStats);
+      }, GLOBAL_UPDATE_INTERVAL);
+
       return () => {
         clearInterval(incomeTimer);
         clearInterval(syncTimer);
+        clearInterval(globalUpdateTimer);
       };
     }
   }, [user, income, updateLocalCoins, syncWithServer]);
@@ -192,7 +215,8 @@ const GameComponent: React.FC = () => {
             />
           </div>
           <p className="text-5xl font-bold text-purple-400 mb-1">{Math.floor(localCoins).toLocaleString()}</p>
-          <p className="text-xl text-gray-400 mb-6">Crypto Coins</p>
+          <p className="text-xl text-gray-400 mb-2">Crypto Coins</p>
+          <p className="text-sm text-green-400 mb-6">Market Price: ${marketPrice.toFixed(2)}</p>
 
           <div className="flex gap-4 mb-6 w-full max-w-md">
             <Card className="flex-1 bg-gradient-to-br from-blue-600 to-purple-600 shadow-md hover:shadow-lg transition-shadow">
@@ -205,6 +229,17 @@ const GameComponent: React.FC = () => {
               <CardContent className="p-3">
                 <p className="text-gray-200 text-sm">Click Power</p>
                 <p className="text-lg font-bold">{clickPower.toFixed(2)}</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="w-full max-w-md mb-6">
+            <Card className="bg-gradient-to-br from-indigo-600 to-blue-600 shadow-md hover:shadow-lg transition-shadow">
+              <CardContent className="p-3">
+                <h3 className="text-lg font-bold mb-2">Global Stats</h3>
+                <p className="text-sm">Block Height: {globalStats.blockHeight.toLocaleString()}</p>
+                <p className="text-sm">Difficulty: {globalStats.difficulty.toFixed(2)}</p>
+                <p className="text-sm">Global Hash Rate: {globalStats.globalHashRate.toExponential(2)} H/s</p>
               </CardContent>
             </Card>
           </div>

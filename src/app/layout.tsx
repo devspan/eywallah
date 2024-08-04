@@ -6,7 +6,7 @@ import './globals.css';
 import { Providers } from './providers';
 import Script from 'next/script';
 import NavBar from '@/components/NavBar';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 
 const fontHeading = Manrope({
@@ -32,6 +32,12 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const [isDevelopment, setIsDevelopment] = useState(false);
+
+  useEffect(() => {
+    setIsDevelopment(process.env.NODE_ENV === 'development');
+  }, []);
+
   return (
     <html lang="en">
       <head>
@@ -53,7 +59,7 @@ export default function RootLayout({
           <NavBar />
           {children}
         </Providers>
-        <ErudaInit />
+        {isDevelopment && <ErudaInit />}
       </body>
     </html>
   );
