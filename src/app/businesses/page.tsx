@@ -1,10 +1,10 @@
 "use client";
-import React from 'react';
+import type React from 'react';
 import { useGameStore } from '@/lib/store';
 import { Button } from "@/components/ui/button";
 import { Cpu, Server, Briefcase, BarChart, DollarSign, Globe } from 'lucide-react';
 import { BUSINESSES, calculateBusinessCost } from '@/lib/gameLogic';
-import { BusinessType } from '@/types';
+import type { BusinessType } from '@/types';
 
 const businessIcons: Record<BusinessType, React.ReactElement> = {
   gpuMiner: <Cpu className="w-8 h-8 text-purple-400" />,

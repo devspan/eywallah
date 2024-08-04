@@ -1,8 +1,9 @@
 "use client";
-import React, { createContext, useContext, useEffect, useState } from "react";
+import type React from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { initTelegramAuth, getTelegramUser } from "@/lib/telegramAuth";
-import { WebAppUser } from "@/types/telegram";
+import type { WebAppUser } from "@/types/telegram";
 import { logger } from '@/lib/logger';
 
 interface TelegramAuthContextValue {

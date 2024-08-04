@@ -9,7 +9,7 @@ import {
   calculateIncome, calculateBusinessCost, 
   calculateClickPower, calculatePrestigePoints 
 } from '@/lib/gameLogic';
-import { BusinessType, UpgradeType } from '@/types';
+import type { BusinessType, UpgradeType } from '@/types';
 import { logger } from '@/lib/logger';
 
 export async function GET() {

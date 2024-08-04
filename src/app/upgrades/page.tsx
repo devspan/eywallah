@@ -1,10 +1,10 @@
 "use client";
-import React from 'react';
+import type React from 'react';
 import { useGameStore } from '@/lib/store';
 import { Button } from "@/components/ui/button";
 import { Wifi, Snowflake, Settings, Rocket } from 'lucide-react';
 import { UPGRADES, PRESTIGE_COST, calculatePrestigePoints } from '@/lib/gameLogic';
-import { UpgradeType } from '@/types';
+import type { UpgradeType } from '@/types';
 
 const upgradeIcons: Record<UpgradeType, React.ReactElement> = {
   fasterInternet: <Wifi className="w-8 h-8 text-blue-400" />,

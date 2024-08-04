@@ -2,7 +2,7 @@
 'use client'
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { TelegramAuthProvider } from '@/components/TelegramAuthProvider'
 
 const queryClient = new QueryClient()

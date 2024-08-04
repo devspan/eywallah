@@ -1,5 +1,6 @@
 "use client";
-import React, { useEffect, useRef, useState } from 'react';
+import type React from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent } from "@/components/ui/card";
@@ -9,7 +10,7 @@ import { useTelegramAuth } from "@/components/TelegramAuthProvider";
 import { useGameStore } from '@/lib/store';
 import NavBar from './NavBar';
 import { PRESTIGE_COST, calculateClickPower, calculateRank, calculateIncome } from '@/lib/gameLogic';
-import { User } from '@/types';
+import type { User } from '@/types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 const SYNC_INTERVAL = 10000; // 10 seconds

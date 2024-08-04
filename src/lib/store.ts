@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { User, BusinessType, UpgradeType, UserBusiness, UserUpgrade } from '@/types';
+import type { User, BusinessType, UpgradeType, UserBusiness, UserUpgrade } from '@/types';
 import { BUSINESSES, UPGRADES, calculateIncome, calculateBusinessCost } from '@/lib/gameLogic';
 
 interface GameState {

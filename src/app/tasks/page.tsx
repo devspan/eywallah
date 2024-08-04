@@ -1,5 +1,5 @@
 "use client";
-import React from 'react';
+import type React from 'react';
 import { Button } from "@/components/ui/button";
 import { Youtube, Twitter, Facebook, Twitch, Coins } from 'lucide-react';
 

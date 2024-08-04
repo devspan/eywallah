@@ -1,5 +1,5 @@
-import { PrismaClient, Prisma } from '@prisma/client';
-import { User, BusinessType, UpgradeType } from '@/types';
+import { PrismaClient, type Prisma } from '@prisma/client';
+import type { User, BusinessType, UpgradeType } from '@/types';
 import { BUSINESSES, UPGRADES, calculateIncome } from '@/lib/gameLogic';
 import { logger } from '@/lib/logger';
 

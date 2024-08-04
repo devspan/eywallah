@@ -1,4 +1,4 @@
-import { User, Business, Upgrade, BusinessType, UpgradeType } from '@/types';
+import type { User, Business, Upgrade, BusinessType, UpgradeType } from '@/types';
 import { logger } from '@/lib/logger';
 
 export const PRESTIGE_COST = 1e6; // 1 million coins to prestige
