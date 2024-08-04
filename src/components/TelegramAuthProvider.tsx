@@ -1,9 +1,8 @@
 "use client";
-import type React from "react";
-import { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { initTelegramAuth, getTelegramUser } from "@/lib/telegramAuth";
-import type { WebAppUser } from "@/types/telegram";
+import { WebAppUser } from "@/types/telegram";
 import { logger } from '@/lib/logger';
 
 interface TelegramAuthContextValue {
@@ -32,7 +31,10 @@ export const TelegramAuthProvider: React.FC<TelegramAuthProviderProps> = ({ chil
       try {
         logger.debug('Initializing Telegram auth...');
         await initTelegramAuth();
+        logger.debug('Telegram auth initialized successfully');
+
         const telegramUser = getTelegramUser();
+        logger.debug('Fetched Telegram user:', telegramUser);
 
         if (telegramUser) {
           logger.debug('Telegram user found', telegramUser);
@@ -44,7 +46,7 @@ export const TelegramAuthProvider: React.FC<TelegramAuthProviderProps> = ({ chil
           router.push("/landing");
         }
       } catch (error) {
-        logger.error("Failed to initialize Telegram auth", error);
+        logger.error("Failed to initialize Telegram auth", error as Error);
         setIsAuthenticated(false);
         router.push("/landing");
       }

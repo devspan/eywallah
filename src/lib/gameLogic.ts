@@ -55,7 +55,7 @@ export function calculateIncome(user: User): number {
 
 export function calculateClickPower(user: User): number {
   logger.debug('Calculating click power for user', { userId: user.id });
-  let clickPower = 0.005; // Reduced base click power
+  let clickPower = 1000; // Reduced base click power
   
   // Apply click upgrade
   const clickUpgrade = user.upgrades.find(upgrade => upgrade.type === 'clickUpgrade');

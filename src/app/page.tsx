@@ -1,16 +1,20 @@
 "use client"
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { initTelegramAuth, getTelegramUser, getStartParam } from '@/lib/telegramAuth';
 import { logger } from '@/lib/logger';
 
 export default function Home() {
   const router = useRouter();
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const initialize = async () => {
       try {
+        logger.debug('Starting Telegram auth initialization');
         await initTelegramAuth();
+        logger.debug('Telegram auth initialized successfully');
+
         const user = getTelegramUser();
         const startParam = getStartParam();
 
@@ -18,24 +22,33 @@ export default function Home() {
         logger.debug('Start param', { startParam });
         
         if (user) {
-          // User is authenticated, redirect to game page
+          logger.debug('User authenticated, redirecting to game page');
           router.push('/game');
         } else {
-          // Commented out logic for redirecting to landing page
+          logger.warn('User not authenticated');
+          setError('User not authenticated');
+          // Uncomment the following line to redirect to the landing page
           // router.push('/landing');
-          logger.debug('User not authenticated');
         }
       } catch (error) {
         logger.error('Failed to initialize Telegram auth', error as Error);
-        // Handle initialization error
+        setError((error as Error).message || 'An unknown error occurred');
       }
     };
 
     initialize();
   }, [router]);
 
+  if (error) {
+    return (
+      <div>
+        <h1>Error</h1>
+        <p>{error}</p>
+      </div>
+    );
+  }
+
   return (
-    // Render your home page content here
     <div>Loading...</div>
   );
 }

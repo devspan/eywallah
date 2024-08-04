@@ -1,6 +1,5 @@
 "use client";
-import type React from 'react';
-import { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent } from "@/components/ui/card";
@@ -10,7 +9,8 @@ import { useTelegramAuth } from "@/components/TelegramAuthProvider";
 import { useGameStore } from '@/lib/store';
 import NavBar from './NavBar';
 import { PRESTIGE_COST, calculateClickPower, calculateRank, calculateIncome } from '@/lib/gameLogic';
-import type { User } from '@/types';
+import { User } from '@/types';
+import { logger } from '@/lib/logger';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 const SYNC_INTERVAL = 10000; // 10 seconds
@@ -29,10 +29,10 @@ const GameComponent: React.FC = () => {
     queryKey: ['user', telegramUser?.id],
     queryFn: async () => {
       if (!telegramUser) {
-        console.error('No Telegram user found');
+        logger.error('No Telegram user found');
         throw new Error('No Telegram user');
       }
-      console.log('Fetching user data', { telegramId: telegramUser.id });
+      logger.debug('Fetching user data', { telegramId: telegramUser.id });
       const response = await fetch(`${API_URL}/api/game`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -46,11 +46,11 @@ const GameComponent: React.FC = () => {
       });
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('Failed to fetch user data', { status: response.status, error: errorText });
+        logger.error('Failed to fetch user data', { status: response.status, error: errorText });
         throw new Error(`Failed to fetch user data: ${response.status} ${errorText}`);
       }
       const data = await response.json();
-      console.log('User data fetched', { userData: data });
+      logger.debug('User data fetched', { userData: data });
       return data as User;
     },
     enabled: isAuthenticated && !!telegramUser,
@@ -59,14 +59,14 @@ const GameComponent: React.FC = () => {
 
   useEffect(() => {
     if (userError) {
-      console.error('Error fetching user data:', userError);
+      logger.error('Error fetching user data:', userError);
       toast.error(`Failed to fetch user data: ${userError.message}`);
     }
   }, [userError]);
 
   useEffect(() => {
     if (userData) {
-      console.log('Setting user data', { userData });
+      logger.debug('Setting user data', { userData });
       setUser(userData);
       const calculatedIncome = calculateIncome(userData);
       const calculatedClickPower = calculateClickPower(userData);
