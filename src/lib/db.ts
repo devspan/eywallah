@@ -1,6 +1,6 @@
 import { PrismaClient, type Prisma } from '@prisma/client';
 import type { User, BusinessType, UpgradeType } from '@/types';
-import { BUSINESSES, UPGRADES, calculateIncome } from '@/lib/gameLogic';
+import { BUSINESSES, UPGRADES, calculateIncome, calculateClickPower } from '@/lib/gameLogic';
 import { logger } from '@/lib/logger';
 
 const prisma = new PrismaClient();
@@ -266,4 +266,19 @@ export async function resetUserProgress(userId: string, prestigePoints: number):
 export function calculateBusinessCost(businessType: BusinessType, currentCount: number): number {
   logger.debug('Calculating business cost', { businessType, currentCount });
   return Math.floor(BUSINESSES[businessType].baseCost * Math.pow(1.15, currentCount));
+}
+
+export async function syncUserData(userId: string, cryptoCoins: number): Promise<User & { income: number, clickPower: number }> {
+  try {
+    logger.debug('Syncing user data', { userId, cryptoCoins });
+    const user = await updateUser(userId, { cryptoCoins, lastActive: new Date() });
+    logger.debug('User updated', { userId, updatedCoins: user.cryptoCoins });
+    const income = calculateIncome(user);
+    const clickPower = calculateClickPower(user);
+    logger.debug('User data synced', { userId, income, clickPower });
+    return { ...user, income, clickPower };
+  } catch (error) {
+    logger.error('Error syncing user data', { userId, error });
+    throw error;
+  }
 }

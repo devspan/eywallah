@@ -1,113 +1,61 @@
 "use client";
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import Image from 'next/image';
-import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { toast } from 'react-hot-toast';
 import { useTelegramAuth } from "@/components/TelegramAuthProvider";
 import { useGameStore } from '@/lib/store';
 import NavBar from './NavBar';
-import { 
-  PRESTIGE_COST, 
-  calculateClickPower, 
-  calculateRank, 
-  calculateIncome, 
-  getCurrentMarketPrice,
-  getGlobalStats
-} from '@/lib/gameLogic';
-import { User } from '@/types';
+import { PRESTIGE_COST, calculateRank } from '@/lib/gameLogic';
 import { logger } from '@/lib/logger';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
-const SYNC_INTERVAL = 10000; // 10 seconds
 const CLICK_COOLDOWN = 100; // 0.1 seconds
+const SYNC_INTERVAL = 30000; // 30 seconds
 const GLOBAL_UPDATE_INTERVAL = 5000; // 5 seconds
 
 const GameComponent: React.FC = () => {
   const { user: telegramUser, isAuthenticated } = useTelegramAuth();
-  const { user, localCoins, income, setUser, updateLocalCoins, syncWithServer } = useGameStore();
-  const [clickPower, setClickPower] = useState(0);
-  const [profilePhoto, setProfilePhoto] = useState<string | null>(null);
-  const [marketPrice, setMarketPrice] = useState(1);
-  const [globalStats, setGlobalStats] = useState({
-    blockHeight: 0,
-    difficulty: 0,
-    globalHashRate: 0,
-    marketPrice: 1
-  });
+  const { 
+    user, localCoins, income, clickPower, marketPrice, globalStats,
+    isLoading, error, updateLocalCoins, syncWithServer, updateGlobalGame, fetchUserData
+  } = useGameStore();
+
+  const [profilePhoto, setProfilePhoto] = React.useState<string | null>(null);
   const lastClickTimeRef = useRef(0);
-  const lastSyncTimeRef = useRef(0);
   const coinRef = useRef<HTMLDivElement>(null);
 
-  const { data: userData, error: userError, isLoading: isUserLoading, refetch } = useQuery<User, Error>({
-    queryKey: ['user', telegramUser?.id],
-    queryFn: async () => {
-      if (!telegramUser) {
-        logger.error('No Telegram user found');
-        throw new Error('No Telegram user');
-      }
+  useEffect(() => {
+    if (isAuthenticated && telegramUser) {
       logger.debug('Fetching user data', { telegramId: telegramUser.id });
-      const response = await fetch(`${API_URL}/api/game`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          action: 'init', 
-          data: { 
-            telegramId: telegramUser.id.toString(), 
-            username: telegramUser.username || undefined
-          } 
-        }),
-      });
-      if (!response.ok) {
-        const errorText = await response.text();
-        logger.error('Failed to fetch user data', { status: response.status, error: errorText });
-        throw new Error(`Failed to fetch user data: ${response.status} ${errorText}`);
-      }
-      const data = await response.json();
-      logger.debug('User data fetched', { userData: data });
-      return data as User;
-    },
-    enabled: isAuthenticated && !!telegramUser,
-    retry: 3,
-  });
+      fetchUserData(telegramUser.id.toString(), telegramUser.username);
+    }
+  }, [isAuthenticated, telegramUser, fetchUserData]);
 
   useEffect(() => {
-    if (userError) {
-      logger.error('Error fetching user data:', userError);
-      toast.error(`Failed to fetch user data: ${userError.message}`);
+    if (error) {
+      logger.error('Error in GameComponent', { error });
+      toast.error(`Error: ${error}`);
     }
-  }, [userError]);
-
-  useEffect(() => {
-    if (userData) {
-      logger.debug('Setting user data', { userData });
-      setUser(userData);
-      const calculatedIncome = calculateIncome(userData);
-      const calculatedClickPower = calculateClickPower(userData);
-      setClickPower(calculatedClickPower);
-    }
-  }, [userData, setUser]);
+  }, [error]);
 
   useEffect(() => {
     if (user) {
+      logger.debug('Setting up game timers', { userId: user.id });
       const incomeTimer = setInterval(() => {
-        updateLocalCoins(income / 10);
+        const earnedCoins = income / 10;
+        updateLocalCoins(earnedCoins);
+        logger.debug('Income earned', { earnedCoins });
       }, 100);
 
       const syncTimer = setInterval(() => {
-        const now = Date.now();
-        if (now - lastSyncTimeRef.current >= SYNC_INTERVAL) {
-          lastSyncTimeRef.current = now;
-          syncWithServer();
-        }
-      }, 1000);
+        logger.debug('Syncing with server');
+        syncWithServer();
+      }, SYNC_INTERVAL);
 
       const globalUpdateTimer = setInterval(() => {
-        const newMarketPrice = getCurrentMarketPrice();
-        const newGlobalStats = getGlobalStats();
-        setMarketPrice(newMarketPrice);
-        setGlobalStats(newGlobalStats);
+        logger.debug('Updating global game state');
+        updateGlobalGame();
       }, GLOBAL_UPDATE_INTERVAL);
 
       return () => {
@@ -116,34 +64,30 @@ const GameComponent: React.FC = () => {
         clearInterval(globalUpdateTimer);
       };
     }
-  }, [user, income, updateLocalCoins, syncWithServer]);
+  }, [user, income, updateLocalCoins, syncWithServer, updateGlobalGame]);
 
   const handleCoinClick = () => {
     const now = Date.now();
-    if (now - lastClickTimeRef.current < CLICK_COOLDOWN) {
-      return;
-    }
+    if (now - lastClickTimeRef.current < CLICK_COOLDOWN) return;
     lastClickTimeRef.current = now;
-    updateLocalCoins(clickPower);
+    const earnedCoins = clickPower;
+    updateLocalCoins(earnedCoins);
+    logger.debug('Coins earned from click', { earnedCoins });
 
-    // Animation
     if (coinRef.current) {
       coinRef.current.classList.add('animate-bounce');
-      setTimeout(() => {
-        coinRef.current?.classList.remove('animate-bounce');
-      }, 300);
-    }
+      setTimeout(() => coinRef.current?.classList.remove('animate-bounce'), 300);
 
-    // Floating text animation
-    const floatingText = document.createElement('div');
-    floatingText.textContent = `+${clickPower.toFixed(2)}`;
-    floatingText.className = 'absolute text-purple-400 font-bold text-2xl animate-float-up';
-    floatingText.style.left = `${Math.random() * 80 + 10}%`;
-    coinRef.current?.appendChild(floatingText);
-    setTimeout(() => floatingText.remove(), 1000);
+      const floatingText = document.createElement('div');
+      floatingText.textContent = `+${earnedCoins.toFixed(2)}`;
+      floatingText.className = 'absolute text-purple-400 font-bold text-2xl animate-float-up';
+      floatingText.style.left = `${Math.random() * 80 + 10}%`;
+      coinRef.current.appendChild(floatingText);
+      setTimeout(() => floatingText.remove(), 1000);
+    }
   };
 
-  if (isUserLoading) {
+  if (isLoading) {
     return (
       <div className="fixed inset-0 w-screen h-screen flex items-center justify-center bg-gray-900">
         <div className="relative w-full h-full">
@@ -160,13 +104,19 @@ const GameComponent: React.FC = () => {
     );
   }
 
-  if (userError || !userData) {
+  if (!user) {
+    logger.warn('User data not available');
     return (
       <div className="min-h-screen bg-[#1a2035] text-white flex flex-col items-center justify-center p-4">
         <h1 className="text-2xl font-bold mb-4">Error: Unable to load user data</h1>
-        <p className="text-red-500 mb-4">{userError?.message || 'Unknown error occurred'}</p>
+        <p className="text-red-500 mb-4">{error || 'Unknown error occurred'}</p>
         <button
-          onClick={() => refetch()}
+          onClick={() => {
+            if (telegramUser) {
+              logger.debug('Retrying user data fetch', { telegramId: telegramUser.id });
+              fetchUserData(telegramUser.id.toString(), telegramUser.username);
+            }
+          }}
           className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
         >
           Retry
@@ -175,7 +125,8 @@ const GameComponent: React.FC = () => {
     );
   }
 
-  const userRank = calculateRank(userData.cryptoCoins);
+  const userRank = calculateRank(user.cryptoCoins);
+  logger.debug('Rendering game component', { userId: user.id, rank: userRank, localCoins });
 
   return (
     <div className="min-h-screen bg-[#1a2035] text-white flex flex-col">
@@ -190,13 +141,13 @@ const GameComponent: React.FC = () => {
               )}
             </div>
             <div>
-              <h1 className="font-bold text-sm">{userData.username || 'Crypto Capitalist'}</h1>
+              <h1 className="font-bold text-sm">{user.username || 'Crypto Capitalist'}</h1>
               <p className="text-xs text-purple-400">{userRank}</p>
             </div>
           </div>
           <div className="text-right">
             <p className="text-xs text-purple-400">Prestige Points</p>
-            <p className="font-bold text-sm">{userData.prestigePoints}</p>
+            <p className="font-bold text-sm">{user.prestigePoints}</p>
           </div>
         </div>
 
