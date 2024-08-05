@@ -1,109 +1,128 @@
-// src/app/api/game/route.ts
-
 import { NextResponse } from 'next/server';
-import { 
-  getUserByTelegramId, 
-  createUser, 
-  updateUser, 
-  addBusiness, 
-  addUpgrade,
-  syncUserData
-} from '@/lib/db';
-import { 
-  calculateIncome, 
-  calculateClickPower, 
-  calculateBusinessCost, 
-  UPGRADES 
-} from '@/lib/gameLogic';
+import { getGameState, saveGameState, createNewUser } from '@/lib/redis';
+import { addBusiness, addUpgrade, applyPurchaseCost, calculateIncome, calculateBusinessCost, calculatePrestigePoints, calculateUpgradeCost, canAfford, getBusinessTypes, getGlobalStats, getUpgradeTypes, performPrestige, updateGlobalState } from '@/lib/gameLogic';
 import { BusinessType, UpgradeType } from '@/types';
-import { logger } from '@/lib/logger';
+import jwt from 'jsonwebtoken';
+
+interface JwtPayload {
+  id: string;
+}
+
+// Function to extract the Telegram user ID from the Authorization header
+function getTelegramId(headers: Headers): string | null {
+  const authHeader = headers.get('Authorization');
+  if (!authHeader) return null;
+
+  const token = authHeader.split(' ')[1];
+  if (!token) return null;
+
+  try {
+    const decoded = jwt.decode(token) as JwtPayload;
+    return decoded.id || null;
+  } catch {
+    return null;
+  }
+}
 
 export async function POST(request: Request) {
-  try {
-    const { action, data } = await request.json();
-
-    switch (action) {
-      case 'init':
-        return await handleInit(data);
-      case 'sync':
-        return await handleSync(data);
-      case 'buyBusiness':
-        return await handleBuyBusiness(data);
-      case 'buyUpgrade':
-        return await handleBuyUpgrade(data);
-      default:
-        return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
-    }
-  } catch (error) {
-    logger.error('Error in game API:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
-  }
-}
-
-async function handleInit({ telegramId, username }: { telegramId: string, username?: string }) {
-  let user = await getUserByTelegramId(telegramId);
-  if (!user) {
-    user = await createUser(telegramId, username || null);
-  }
-  const income = calculateIncome(user);
-  const clickPower = calculateClickPower(user);
-  return NextResponse.json({ ...user, income, clickPower });
-}
-
-async function handleSync({ userId, cryptoCoins }: { userId: string, cryptoCoins: number }) {
-  logger.debug('Handling sync request', { userId, cryptoCoins });
-  const user = await syncUserData(userId, cryptoCoins);
-  logger.debug('User data synced', { userId, updatedCoins: user.cryptoCoins });
-  return NextResponse.json(user);
-}
-
-async function handleBuyBusiness({ userId, businessType }: { userId: string, businessType: string }) {
-  const user = await getUserByTelegramId(userId);
-  if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
-
-  const typedBusinessType = businessType as BusinessType;
-  const existingBusiness = user.businesses.find(b => b.type === typedBusinessType);
-  const currentCount = existingBusiness?.count || 0;
-  const cost = calculateBusinessCost(typedBusinessType, currentCount);
-
-  if (user.cryptoCoins < cost) {
-    return NextResponse.json({ error: 'Not enough coins' }, { status: 400 });
+  const telegramId = getTelegramId(request.headers);
+  if (!telegramId) {
+    return NextResponse.json({ error: 'User not authenticated' }, { status: 401 });
   }
 
-  const updatedUser = await addBusiness(userId, typedBusinessType);
-  updatedUser.cryptoCoins -= cost;
-  await updateUser(userId, { cryptoCoins: updatedUser.cryptoCoins });
+  const { action, data } = await request.json();
+  let gameState = await getGameState(telegramId);
 
-  const income = calculateIncome(updatedUser);
-  const clickPower = calculateClickPower(updatedUser);
-  return NextResponse.json({ ...updatedUser, income, clickPower });
-}
-
-async function handleBuyUpgrade({ userId, upgradeId }: { userId: string, upgradeId: string }) {
-  const user = await getUserByTelegramId(userId);
-  if (!user) {
-    return NextResponse.json({ error: 'User not found' }, { status: 404 });
+  if (!gameState) {
+    // If no game state exists, create a new one
+    gameState = createNewUser(telegramId);
+    await saveGameState(gameState);
   }
 
-  const upgradeType = upgradeId as UpgradeType;
-  if (!(upgradeType in UPGRADES)) {
-    return NextResponse.json({ error: 'Invalid upgrade type' }, { status: 400 });
+  switch (action) {
+    case 'addBusiness':
+      {
+        const { businessType } = data as { businessType: BusinessType };
+        const businessCost = calculateBusinessCost(
+          businessType,
+          gameState.businesses.filter((b) => b.type === businessType).length
+        );
+
+        if (!canAfford(gameState, businessCost)) {
+          return NextResponse.json({ error: 'Insufficient funds' }, { status: 400 });
+        }
+
+        gameState = applyPurchaseCost(gameState, businessCost);
+        gameState = addBusiness(gameState, businessType);
+
+        await saveGameState(gameState);
+
+        return NextResponse.json({ message: 'Business added successfully' });
+      }
+
+    case 'addUpgrade':
+      {
+        const { upgradeType } = data as { upgradeType: UpgradeType };
+        const userUpgrade = gameState.upgrades.find((u) => u.type === upgradeType);
+        const level = userUpgrade ? userUpgrade.level : 0;
+        const upgradeCost = calculateUpgradeCost(upgradeType, level);
+
+        if (!canAfford(gameState, upgradeCost)) {
+          return NextResponse.json({ error: 'Insufficient funds' }, { status: 400 });
+        }
+
+        gameState = applyPurchaseCost(gameState, upgradeCost);
+        gameState = addUpgrade(gameState, upgradeType);
+
+        await saveGameState(gameState);
+
+        return NextResponse.json({ message: 'Upgrade added successfully' });
+      }
+
+    case 'getGameState':
+      return NextResponse.json(gameState);
+
+    case 'prestigeReset':
+      {
+        const prestigeCost = 1e6;
+
+        if (gameState.cryptoCoins < prestigeCost) {
+          return NextResponse.json({ error: 'Insufficient coins to prestige' }, { status: 400 });
+        }
+
+        gameState = performPrestige(gameState);
+
+        await saveGameState(gameState);
+
+        return NextResponse.json({ message: 'Prestige reset successful' });
+      }
+
+    case 'getGlobalStats':
+      return NextResponse.json(getGlobalStats());
+
+    case 'updateGlobalState':
+      updateGlobalState();
+      return NextResponse.json({ message: 'Global state updated' });
+
+    case 'getBusinessTypes':
+      return NextResponse.json(getBusinessTypes());
+
+    case 'getUpgradeTypes':
+      return NextResponse.json(getUpgradeTypes());
+
+    case 'calculateIncome':
+      {
+        const income = calculateIncome(gameState);
+        return NextResponse.json({ income });
+      }
+
+    case 'calculatePrestigePoints':
+      {
+        const prestigePoints = calculatePrestigePoints(gameState.cryptoCoins);
+        return NextResponse.json({ prestigePoints });
+      }
+
+    default:
+      return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
   }
-
-  const upgradeCost = UPGRADES[upgradeType].cost;
-  if (user.cryptoCoins < upgradeCost) {
-    return NextResponse.json({ error: 'Not enough coins' }, { status: 400 });
-  }
-
-  if (user.upgrades.some(u => u.type === upgradeType)) {
-    return NextResponse.json({ error: 'Upgrade already purchased' }, { status: 400 });
-  }
-
-  const updatedUser = await addUpgrade(userId, upgradeType);
-  updatedUser.cryptoCoins -= upgradeCost;
-  await updateUser(userId, { cryptoCoins: updatedUser.cryptoCoins });
-
-  const income = calculateIncome(updatedUser);
-  const clickPower = calculateClickPower(updatedUser);
-  return NextResponse.json({ ...updatedUser, income, clickPower });
 }

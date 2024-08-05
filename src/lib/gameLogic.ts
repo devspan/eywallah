@@ -1,4 +1,4 @@
-import type { User, Business, Upgrade, BusinessType, UpgradeType } from '@/types';
+import { User, Business, Upgrade, BusinessType, UpgradeType, GameData } from './index';
 import { logger } from '@/lib/logger';
 
 // Constants
@@ -27,11 +27,31 @@ export const BUSINESSES: Record<BusinessType, Business> = {
 };
 
 export const UPGRADES: Record<UpgradeType, Upgrade> = {
-  fasterInternet: { name: "Faster Internet", cost: 1000, effect: 1.05 },
-  betterCooling: { name: "Better Cooling", cost: 5000, effect: 1.07 },
-  aiOptimization: { name: "AI Optimization", cost: 20000, effect: 1.1 },
-  quantumMining: { name: "Quantum Mining", cost: 1000000, effect: 2 },
-  clickUpgrade: { name: "Click Power", cost: 500, effect: 1.25 },
+  fasterInternet: {
+    name: "Faster Internet",
+    cost: (level) => 1000 * Math.pow(1.5, level),
+    effect: (level) => 1 + 0.05 * level
+  },
+  betterCooling: {
+    name: "Better Cooling",
+    cost: (level) => 5000 * Math.pow(1.6, level),
+    effect: (level) => 1 + 0.07 * level
+  },
+  aiOptimization: {
+    name: "AI Optimization",
+    cost: (level) => 20000 * Math.pow(1.7, level),
+    effect: (level) => 1 + 0.1 * level
+  },
+  quantumMining: {
+    name: "Quantum Mining",
+    cost: (level) => 1000000 * Math.pow(2, level),
+    effect: (level) => 1 + 0.2 * level
+  },
+  clickUpgrade: {
+    name: "Click Power",
+    cost: (level) => 500 * Math.pow(1.3, level),
+    effect: (level) => 1 + 0.25 * level
+  }
 };
 
 export const RANKS = [
@@ -74,7 +94,7 @@ function calculateTransactionFees(user: User): number {
   let fees = 0;
   for (const business of user.businesses) {
     if (BUSINESSES[business.type].baseTransactionFee) {
-      fees += BUSINESSES[business.type].baseTransactionFee * business.count * globalBlockHeight * 0.01;
+      fees += BUSINESSES[business.type].baseTransactionFee! * business.count * globalBlockHeight * 0.01;
     }
   }
   return fees;
@@ -82,7 +102,7 @@ function calculateTransactionFees(user: User): number {
 
 function calculateStakingRewards(user: User): number {
   const defiPlatform = user.businesses.find(b => b.type === 'defiPlatform');
-  if (!defiPlatform) return 0;
+  if (!defiPlatform || !BUSINESSES.defiPlatform.baseStakingReward) return 0;
   
   const baseReward = BUSINESSES.defiPlatform.baseStakingReward * defiPlatform.count;
   return baseReward * user.cryptoCoins * 0.1; // Assume 10% of coins are staked
@@ -100,7 +120,8 @@ export function calculateUserHashRate(user: User): number {
   // Apply upgrades to hash rate
   for (const upgrade of user.upgrades) {
     if (upgrade.type !== 'clickUpgrade') {
-      totalHashRate *= UPGRADES[upgrade.type].effect;
+      const upgradeData = UPGRADES[upgrade.type];
+      totalHashRate *= upgradeData.effect(getUserUpgradeLevel(user, upgrade.type));
     }
   }
   
@@ -114,13 +135,13 @@ export function calculateClickPower(user: User): number {
   // Apply click upgrade
   const clickUpgrade = user.upgrades.find(upgrade => upgrade.type === 'clickUpgrade');
   if (clickUpgrade) {
-    clickPower *= UPGRADES.clickUpgrade.effect;
+    clickPower *= UPGRADES.clickUpgrade.effect(getUserUpgradeLevel(user, 'clickUpgrade'));
   }
   
   // Apply other upgrades to click power (reduced effect)
   for (const upgrade of user.upgrades) {
     if (upgrade.type !== 'clickUpgrade') {
-      clickPower *= Math.sqrt(UPGRADES[upgrade.type].effect);
+      clickPower *= Math.sqrt(UPGRADES[upgrade.type].effect(getUserUpgradeLevel(user, upgrade.type)));
     }
   }
 
@@ -158,7 +179,7 @@ export function getUpgradeTypes(): UpgradeType[] {
 
 export function estimateTotalSupply(user: User): number {
   const totalBusinessIncome = Object.values(BUSINESSES).reduce((total, business) => total + (business.baseHashRate || 0), 0);
-  const maxUpgradeEffect = Object.values(UPGRADES).reduce((max, upgrade) => Math.max(max, upgrade.effect), 1);
+  const maxUpgradeEffect = Object.values(UPGRADES).reduce((max, upgrade) => Math.max(max, upgrade.effect(100)), 1);
   const maxPrestigeEffect = 1 + (MAX_TOTAL_SUPPLY / PRESTIGE_COST) * 0.02;
   
   const theoreticalMaxIncomePerSecond = totalBusinessIncome * maxUpgradeEffect * maxPrestigeEffect * coinMarketPrice;
@@ -239,8 +260,8 @@ export function getGlobalStats() {
 }
 
 // Helper function to calculate the cost of an upgrade
-export function calculateUpgradeCost(upgradeType: UpgradeType): number {
-  return UPGRADES[upgradeType].cost;
+export function calculateUpgradeCost(upgradeType: UpgradeType, level: number): number {
+  return UPGRADES[upgradeType].cost(level);
 }
 
 // Function to check if a user can afford a business or upgrade
@@ -297,4 +318,10 @@ export function performPrestige(user: User): User {
     prestigePoints: user.prestigePoints + newPrestigePoints,
     incomeMultiplier: 1 + (user.prestigePoints + newPrestigePoints) * 0.1
   };
+}
+
+// Helper function to get the level of a user's upgrade
+function getUserUpgradeLevel(user: User, upgradeType: UpgradeType): number {
+  const upgrade = user.upgrades.find(u => u.type === upgradeType);
+  return upgrade ? 1 : 0;
 }

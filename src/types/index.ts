@@ -28,19 +28,21 @@ export type Achievement = {
   type: string;
 };
 
-export type BusinessType = 'gpuMiner' | 'asicFarm' | 'blockchainStartup' | 'cryptoExchange' | 'nftMarketplace' | 'defiPlatform';
-export type UpgradeType = 'fasterInternet' | 'betterCooling' | 'aiOptimization' | 'clickUpgrade';
+export type BusinessType = 'gpuMiner' | 'asicFarm' | 'miningPool' | 'cryptoExchange' | 'nftMarketplace' | 'defiPlatform';
+export type UpgradeType = 'fasterInternet' | 'betterCooling' | 'aiOptimization' | 'quantumMining' | 'clickUpgrade';
 
 export type Business = {
   name: string;
   baseCost: number;
-  baseIncome: number;
+  baseHashRate?: number;
+  baseTransactionFee?: number;
+  baseStakingReward?: number;
 };
 
 export type Upgrade = {
   name: string;
-  cost: number;
-  effect: number;
+  cost: (level: number) => number;
+  effect: (level: number) => number;
 };
 
 export type GameData = {
