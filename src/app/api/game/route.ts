@@ -79,21 +79,27 @@ async function handleBuyBusiness({ userId, businessType }: { userId: string, bus
   return NextResponse.json({ ...updatedUser, income, clickPower });
 }
 
-async function handleBuyUpgrade({ userId, upgradeType }: { userId: string, upgradeType: string }) {
+async function handleBuyUpgrade({ userId, upgradeId }: { userId: string, upgradeId: string }) {
   const user = await getUserByTelegramId(userId);
-  if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
+  if (!user) {
+    return NextResponse.json({ error: 'User not found' }, { status: 404 });
+  }
 
-  const typedUpgradeType = upgradeType as UpgradeType;
-  const upgradeCost = UPGRADES[typedUpgradeType].cost;
+  const upgradeType = upgradeId as UpgradeType;
+  if (!(upgradeType in UPGRADES)) {
+    return NextResponse.json({ error: 'Invalid upgrade type' }, { status: 400 });
+  }
+
+  const upgradeCost = UPGRADES[upgradeType].cost;
   if (user.cryptoCoins < upgradeCost) {
     return NextResponse.json({ error: 'Not enough coins' }, { status: 400 });
   }
 
-  if (user.upgrades.some(u => u.type === typedUpgradeType)) {
+  if (user.upgrades.some(u => u.type === upgradeType)) {
     return NextResponse.json({ error: 'Upgrade already purchased' }, { status: 400 });
   }
 
-  const updatedUser = await addUpgrade(userId, typedUpgradeType);
+  const updatedUser = await addUpgrade(userId, upgradeType);
   updatedUser.cryptoCoins -= upgradeCost;
   await updateUser(userId, { cryptoCoins: updatedUser.cryptoCoins });
 
