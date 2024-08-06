@@ -1,65 +1,60 @@
-"use client";
-import React, { createContext, useContext, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { initTelegramAuth, getTelegramUser } from "@/lib/telegramAuth";
-import { WebAppUser } from "@/types/telegram";
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import { initTelegramAuth, getTelegramUser } from '@/lib/telegramAuth';
 import { logger } from '@/lib/logger';
 
-interface TelegramAuthContextValue {
-  user: WebAppUser | null;
+interface TelegramAuthContextType {
+  user: any | null;
   isAuthenticated: boolean;
+  isInitializing: boolean;
+  error: string | null;
 }
 
-const TelegramAuthContext = createContext<TelegramAuthContextValue>({
+const TelegramAuthContext = createContext<TelegramAuthContextType>({
   user: null,
   isAuthenticated: false,
+  isInitializing: true,
+  error: null,
 });
 
-export const useTelegramAuth = () => useContext(TelegramAuthContext);
+export const TelegramAuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [authState, setAuthState] = useState<TelegramAuthContextType>({
+    user: null,
+    isAuthenticated: false,
+    isInitializing: true,
+    error: null,
+  });
 
-interface TelegramAuthProviderProps {
-  children: React.ReactNode;
-}
-
-export const TelegramAuthProvider: React.FC<TelegramAuthProviderProps> = ({ children }) => {
-  const [user, setUser] = useState<WebAppUser | null>(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const router = useRouter();
+  const initializeAuth = useCallback(async () => {
+    try {
+      await initTelegramAuth();
+      const user = getTelegramUser();
+      setAuthState({
+        user,
+        isAuthenticated: !!user,
+        isInitializing: false,
+        error: null,
+      });
+      logger.debug('TelegramAuth initialized', { user });
+    } catch (error) {
+      logger.error('TelegramAuth initialization failed', error);
+      setAuthState({
+        user: null,
+        isAuthenticated: false,
+        isInitializing: false,
+        error: 'Failed to initialize Telegram authentication',
+      });
+    }
+  }, []);
 
   useEffect(() => {
-    const initialize = async () => {
-      try {
-        logger.debug('Initializing Telegram auth...');
-        await initTelegramAuth();
-        logger.debug('Telegram auth initialized successfully');
-
-        const telegramUser = getTelegramUser();
-        logger.debug('Fetched Telegram user:', telegramUser);
-
-        if (telegramUser) {
-          logger.debug('Telegram user found', telegramUser);
-          setUser(telegramUser);
-          setIsAuthenticated(true);
-        } else {
-          logger.warn('No Telegram user found, redirecting to landing page');
-          setIsAuthenticated(false);
-          router.push("/landing");
-        }
-      } catch (error) {
-        logger.error("Failed to initialize Telegram auth", error as Error);
-        setIsAuthenticated(false);
-        router.push("/landing");
-      }
-    };
-
-    initialize();
-  }, [router]);
-
-  logger.debug('TelegramAuthProvider state', { user, isAuthenticated });
+    initializeAuth();
+  }, [initializeAuth]);
 
   return (
-    <TelegramAuthContext.Provider value={{ user, isAuthenticated }}>
+    <TelegramAuthContext.Provider value={authState}>
       {children}
     </TelegramAuthContext.Provider>
   );
 };
+
+export const useTelegramAuth = () => useContext(TelegramAuthContext);

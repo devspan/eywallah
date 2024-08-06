@@ -1,7 +1,6 @@
-// src/lib/gameLogic.ts
-
-import type { User, Business, Upgrade, BusinessType, UpgradeType } from '@/types';
+import type { User, BusinessType, UpgradeType, BusinessData, UpgradeData, Achievement } from '@/types';
 import { logger } from '@/lib/logger';
+
 
 // Constants
 export const PRESTIGE_COST = 1e6; // 1 million coins to prestige
@@ -13,6 +12,7 @@ export const TARGET_BLOCK_TIME = 600; // 10 minutes in seconds
 export const DIFFICULTY_ADJUSTMENT_INTERVAL = 2016; // Number of blocks between difficulty adjustments
 
 export interface GlobalStats {
+  id : string;
   blockHeight: number;
   difficulty: number;
   globalHashRate: number;
@@ -22,7 +22,7 @@ export interface GlobalStats {
   coinMarketPrice: number;
 }
 
-export const BUSINESSES: Record<BusinessType, Business> = {
+export const BUSINESSES: Record<BusinessType, BusinessData> = {
   gpuMiner: { name: "GPU Miner", baseCost: 15, baseHashRate: 1 },
   asicFarm: { name: "ASIC Farm", baseCost: 100, baseHashRate: 10 },
   miningPool: { name: "Mining Pool", baseCost: 1100, baseHashRate: 100 },
@@ -31,13 +31,14 @@ export const BUSINESSES: Record<BusinessType, Business> = {
   defiPlatform: { name: "DeFi Platform", baseCost: 1400000, baseStakingReward: 0.0001 }
 };
 
-export const UPGRADES: Record<UpgradeType, Upgrade> = {
+export const UPGRADES: Record<UpgradeType, UpgradeData> = {
   fasterInternet: { name: "Faster Internet", cost: 1000, effect: 1.05 },
   betterCooling: { name: "Better Cooling", cost: 5000, effect: 1.07 },
   aiOptimization: { name: "AI Optimization", cost: 20000, effect: 1.1 },
   quantumMining: { name: "Quantum Mining", cost: 1000000, effect: 2 },
   clickUpgrade: { name: "Click Power", cost: 500, effect: 1.25 },
 };
+
 
 export const RANKS = [
   { name: "Novice Miner", threshold: 0 },
@@ -206,37 +207,29 @@ export function estimateTimeToExhaustSupply(currentSupply: number, incomePerSeco
 }
 
 export function updateGlobalState(currentStats: GlobalStats): GlobalStats {
-  const newStats = { ...currentStats };
-  
-  // Update block height
-  newStats.blockHeight++;
-  
-  // Update difficulty
+  const newStats: GlobalStats = {
+    id: currentStats.id, // Add this line
+    blockHeight: currentStats.blockHeight + 1,
+    difficulty: currentStats.difficulty,
+    globalHashRate: currentStats.globalHashRate * 1.0001,
+    lastBlockTime: new Date(),
+    networkHashRate: currentStats.globalHashRate * (0.9 + Math.random() * 0.2),
+    mempool: Math.max(0, currentStats.mempool - 1000 + Math.floor(Math.random() * 2000)),
+    coinMarketPrice: currentStats.coinMarketPrice * (1 + (Math.random() - 0.5) * 0.02),
+  };
+
   if (newStats.blockHeight % DIFFICULTY_ADJUSTMENT_INTERVAL === 0) {
     const timeElapsed = newStats.lastBlockTime.getTime() - currentStats.lastBlockTime.getTime();
     const expectedTime = DIFFICULTY_ADJUSTMENT_INTERVAL * TARGET_BLOCK_TIME * 1000;
     newStats.difficulty *= expectedTime / timeElapsed;
     newStats.difficulty = Math.max(INITIAL_MINING_DIFFICULTY, newStats.difficulty);
   }
-  
-  // Update global hash rate
-  newStats.globalHashRate *= 1.0001; // Slight increase in global hash rate
-  
-  // Update network hash rate
-  newStats.networkHashRate = newStats.globalHashRate * (0.9 + Math.random() * 0.2); // 90-110% of global hash rate
-  
-  // Update mempool
-  newStats.mempool = Math.max(0, newStats.mempool - 1000 + Math.floor(Math.random() * 2000)); // Remove transactions, add new ones
-  
-  // Update market price (simplified)
-  const priceChange = (Math.random() - 0.5) * 0.02; // -1% to +1% change
-  newStats.coinMarketPrice *= (1 + priceChange);
-  newStats.coinMarketPrice = Math.max(0.01, newStats.coinMarketPrice); // Ensure price doesn't go below $0.01
 
-  newStats.lastBlockTime = new Date();
-  
+  newStats.coinMarketPrice = Math.max(0.01, newStats.coinMarketPrice);
+
   return newStats;
 }
+
 
 export function getCurrentMarketPrice(globalStats: GlobalStats): number {
   return globalStats.coinMarketPrice;
@@ -244,6 +237,7 @@ export function getCurrentMarketPrice(globalStats: GlobalStats): number {
 
 export function getInitialGlobalStats(): GlobalStats {
   return {
+    id: '0', 
     blockHeight: 0,
     difficulty: INITIAL_MINING_DIFFICULTY,
     globalHashRate: 1000,
@@ -312,5 +306,193 @@ export function performPrestige(user: User): User {
     upgrades: [],
     prestigePoints: user.prestigePoints + newPrestigePoints,
     incomeMultiplier: 1 + (user.prestigePoints + newPrestigePoints) * 0.1
+  };
+}
+
+export function addAchievement(user: User, achievementType: string): User {
+  const existingAchievement = user.achievements.find(a => a.type === achievementType);
+  if (existingAchievement) {
+    return user;
+  }
+  
+  const newAchievement: Achievement = {
+    id: Date.now().toString(),
+    type: achievementType,
+    unlockedAt: new Date()
+  };
+  
+  return {
+    ...user,
+    achievements: [...user.achievements, newAchievement]
+  };
+}
+
+export function checkAndAddAchievements(user: User): User {
+  let updatedUser = user;
+
+  // Check for business count achievements
+  const businessCounts = user.businesses.reduce((acc, business) => {
+    acc[business.type] = (acc[business.type] || 0) + business.count;
+    return acc;
+  }, {} as Record<BusinessType, number>);
+
+  Object.entries(businessCounts).forEach(([type, count]) => {
+    if (count >= 10 && !user.achievements.some(a => a.type === `${type}10`)) {
+      updatedUser = addAchievement(updatedUser, `${type}10`);
+    }
+    if (count >= 50 && !user.achievements.some(a => a.type === `${type}50`)) {
+      updatedUser = addAchievement(updatedUser, `${type}50`);
+    }
+    if (count >= 100 && !user.achievements.some(a => a.type === `${type}100`)) {
+      updatedUser = addAchievement(updatedUser, `${type}100`);
+    }
+  });
+
+  // Check for coin milestones
+  const coinMilestones = [1000, 1000000, 1000000000];
+  coinMilestones.forEach(milestone => {
+    if (user.cryptoCoins >= milestone && !user.achievements.some(a => a.type === `coins${milestone}`)) {
+      updatedUser = addAchievement(updatedUser, `coins${milestone}`);
+    }
+  });
+
+  // Check for upgrade milestones
+  const upgradeCount = user.upgrades.length;
+  if (upgradeCount >= 5 && !user.achievements.some(a => a.type === 'upgrades5')) {
+    updatedUser = addAchievement(updatedUser, 'upgrades5');
+  }
+  if (upgradeCount >= 10 && !user.achievements.some(a => a.type === 'upgrades10')) {
+    updatedUser = addAchievement(updatedUser, 'upgrades10');
+  }
+
+  // Check for prestige milestones
+  if (user.prestigePoints >= 1 && !user.achievements.some(a => a.type === 'prestige1')) {
+    updatedUser = addAchievement(updatedUser, 'prestige1');
+  }
+  if (user.prestigePoints >= 5 && !user.achievements.some(a => a.type === 'prestige5')) {
+    updatedUser = addAchievement(updatedUser, 'prestige5');
+  }
+  if (user.prestigePoints >= 10 && !user.achievements.some(a => a.type === 'prestige10')) {
+    updatedUser = addAchievement(updatedUser, 'prestige10');
+  }
+
+  return updatedUser;
+}
+
+export function simulateGameTick(user: User, globalStats: GlobalStats, elapsedSeconds: number): {user: User, globalStats: GlobalStats} {
+  // Calculate income for the elapsed time
+  const income = calculateIncome(user, globalStats) * elapsedSeconds;
+  
+  // Update user's crypto coins and fractional coins
+  let updatedFractionalCoins = user.fractionalCoins + income;
+  let updatedCoins = user.cryptoCoins + Math.floor(updatedFractionalCoins);
+  updatedFractionalCoins = updatedFractionalCoins % 1;
+  
+  let updatedUser = {
+    ...user,
+    cryptoCoins: updatedCoins,
+    fractionalCoins: updatedFractionalCoins
+  };
+  
+  // Check and add achievements
+  updatedUser = checkAndAddAchievements(updatedUser);
+  
+  // Update global stats
+  const updatedGlobalStats = updateGlobalState(globalStats);
+  
+  return {
+    user: updatedUser,
+    globalStats: updatedGlobalStats
+  };
+}
+
+export function calculateOfflineProgress(user: User, globalStats: GlobalStats, offlineTime: number): {user: User, globalStats: GlobalStats, offlineEarnings: number} {
+  const { user: updatedUser, globalStats: updatedGlobalStats } = simulateGameTick(user, globalStats, offlineTime);
+  const offlineEarnings = updatedUser.cryptoCoins - user.cryptoCoins;
+  
+  return {
+    user: updatedUser,
+    globalStats: updatedGlobalStats,
+    offlineEarnings
+  };
+}
+
+export function applyPrestige(user: User): User {
+  const newPrestigePoints = calculatePrestigePoints(user.cryptoCoins);
+  return {
+    ...user,
+    cryptoCoins: 0,
+    businesses: [],
+    upgrades: [],
+    prestigePoints: user.prestigePoints + newPrestigePoints,
+    incomeMultiplier: 1 + (user.prestigePoints + newPrestigePoints) * 0.1
+  };
+}
+
+export function canPrestige(user: User): boolean {
+  return user.cryptoCoins >= PRESTIGE_COST;
+}
+
+export function getNextRank(user: User): { name: string; threshold: number } | null {
+  const currentRank = calculateRank(user.cryptoCoins);
+  const currentRankIndex = RANKS.findIndex(rank => rank.name === currentRank);
+  
+  if (currentRankIndex < RANKS.length - 1) {
+    return RANKS[currentRankIndex + 1];
+  }
+  
+  return null; // User is at the highest rank
+}
+
+export function calculateProgressToNextRank(user: User): number {
+  const nextRank = getNextRank(user);
+  if (!nextRank) return 100; // User is at max rank
+  
+  const currentRank = RANKS.find(rank => rank.name === calculateRank(user.cryptoCoins));
+  if (!currentRank) return 0; // This should never happen, but TypeScript doesn't know that
+  
+  const progress = (user.cryptoCoins - currentRank.threshold) / (nextRank.threshold - currentRank.threshold);
+  return Math.min(Math.max(progress * 100, 0), 100); // Ensure it's between 0 and 100
+}
+
+export function formatLargeNumber(num: number): string {
+  const suffixes = ['', 'K', 'M', 'B', 'T', 'Qa', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc', 'Ud', 'Dd', 'Td', 'Qad', 'Qid', 'Sxd', 'Spd', 'Ocd', 'Nod', 'Vg', 'Uvg'];
+  let suffixIndex = 0;
+  
+  while (num >= 1000 && suffixIndex < suffixes.length - 1) {
+    num /= 1000;
+    suffixIndex++;
+  }
+  
+  return num.toFixed(3) + suffixes[suffixIndex];
+}
+
+export function calculateTotalWorth(user: User, globalStats: GlobalStats): number {
+  const businessesWorth = user.businesses.reduce((total, business) => {
+    const businessType = business.type as BusinessType;
+    const cost = calculateBusinessCost(businessType, business.count);
+    return total + cost;
+  }, 0);
+
+  const upgradesWorth = user.upgrades.reduce((total, upgrade) => {
+    return total + UPGRADES[upgrade.type as UpgradeType].cost;
+  }, 0);
+
+  return user.cryptoCoins + businessesWorth + upgradesWorth;
+}
+
+export function getLeaderboardPosition(user: User, allUsers: User[]): number {
+  const sortedUsers = allUsers.sort((a, b) => b.cryptoCoins - a.cryptoCoins);
+  return sortedUsers.findIndex(u => u.id === user.id) + 1;
+}
+
+export function mineBlock(user: User, clickPower: number): { updatedCoins: number, updatedFractionalCoins: number } {
+  let updatedFractionalCoins = user.fractionalCoins + clickPower;
+  let updatedCoins = user.cryptoCoins + Math.floor(updatedFractionalCoins);
+  updatedFractionalCoins = updatedFractionalCoins % 1;
+
+  return {
+    updatedCoins,
+    updatedFractionalCoins
   };
 }

@@ -54,9 +54,19 @@ async function handleInit({ telegramId, username }: { telegramId: string, userna
   return NextResponse.json({ ...user, income, clickPower, globalStats });
 }
 
-async function handleSync({ userId, cryptoCoins }: { userId: string, cryptoCoins: number }) {
-  const user = await syncUserData(userId, cryptoCoins);
-  return NextResponse.json(user);
+async function handleSync({ userId, cryptoCoins, fractionalCoins }: { userId: string, cryptoCoins: number, fractionalCoins: number }) {
+  try {
+    logger.debug('Handling sync', { userId, cryptoCoins, fractionalCoins });
+    const user = await syncUserData(userId, cryptoCoins, fractionalCoins);
+    const globalStats = await getGlobalState();
+    const income = calculateIncome(user, globalStats);
+    const clickPower = calculateClickPower(user, globalStats);
+    logger.debug('Sync complete', { userId, updatedCoins: user.cryptoCoins, updatedFractionalCoins: user.fractionalCoins, income, clickPower });
+    return NextResponse.json({ ...user, income, clickPower, globalStats });
+  } catch (error) {
+    logger.error('Error handling sync', { userId, error });
+    return NextResponse.json({ error: 'Failed to sync user data' }, { status: 500 });
+  }
 }
 
 async function handleBuyBusiness({ userId, businessType }: { userId: string, businessType: string }) {

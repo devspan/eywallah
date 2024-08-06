@@ -1,54 +1,83 @@
 "use client"
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { initTelegramAuth, getTelegramUser, getStartParam } from '@/lib/telegramAuth';
+import { useTelegramAuth } from '@/components/TelegramAuthProvider';
+import { useGameStore } from '@/lib/store';
 import { logger } from '@/lib/logger';
+import GameComponent from '@/components/GameComponent';
 
 export default function Home() {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
+  const { user: telegramUser, isAuthenticated, isInitializing } = useTelegramAuth();
+  const { isLoading, user, fetchUserData } = useGameStore();
+
+  const initializeGame = useCallback(async () => {
+    if (isAuthenticated && telegramUser) {
+      try {
+        await fetchUserData(telegramUser.id.toString(), telegramUser.username);
+        logger.debug('Game initialized');
+      } catch (error) {
+        logger.error('Game initialization failed', error);
+        setError('Failed to initialize game data');
+      }
+    }
+  }, [isAuthenticated, telegramUser, fetchUserData]);
 
   useEffect(() => {
-    const initialize = async () => {
-      try {
-        logger.debug('Starting Telegram auth initialization');
-        await initTelegramAuth();
-        logger.debug('Telegram auth initialized successfully');
+    if (!isInitializing) {
+      initializeGame();
+    }
+  }, [isInitializing, initializeGame]);
 
-        const user = getTelegramUser();
-        const startParam = getStartParam();
-
-        logger.debug('Telegram user', { user });
-        logger.debug('Start param', { startParam });
-        
-        if (user) {
-          logger.debug('User authenticated, redirecting to game page');
-          router.push('/game');
-        } else {
-          logger.warn('User not authenticated');
-          setError('User not authenticated');
-          // Uncomment the following line to redirect to the landing page
-          // router.push('/landing');
-        }
-      } catch (error) {
-        logger.error('Failed to initialize Telegram auth', error as Error);
-        setError((error as Error).message || 'An unknown error occurred');
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (isLoading) {
+        setError('Loading timed out. Please refresh the page.');
       }
-    };
+    }, 30000);
 
-    initialize();
-  }, [router]);
+    return () => clearTimeout(timeoutId);
+  }, [isLoading]);
 
   if (error) {
     return (
-      <div>
-        <h1>Error</h1>
-        <p>{error}</p>
+      <div className="min-h-screen bg-[#1a2035] text-white flex flex-col items-center justify-center p-4">
+        <h1 className="text-2xl font-bold mb-4">Error</h1>
+        <p className="text-red-500 mb-4">{error}</p>
+        <button
+          onClick={() => window.location.reload()}
+          className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
+        >
+          Retry
+        </button>
       </div>
     );
   }
 
-  return (
-    <div>Loading...</div>
-  );
+  if (isInitializing || isLoading) {
+    return (
+      <div className="min-h-screen bg-[#1a2035] text-white flex flex-col items-center justify-center p-4">
+        <h1 className="text-2xl font-bold mb-4">Loading...</h1>
+        <div className="animate-spin rounded-full h-32 w-32 border-t-2 border-b-2 border-purple-500"></div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-[#1a2035] text-white flex flex-col items-center justify-center p-4">
+        <h1 className="text-2xl font-bold mb-4">No User Data</h1>
+        <p className="mb-4">Unable to load user data. Please try again.</p>
+        <button
+          onClick={() => window.location.reload()}
+          className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  return <GameComponent />;
 }

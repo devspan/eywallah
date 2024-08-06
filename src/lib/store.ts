@@ -1,18 +1,14 @@
-// src/lib/store.ts
-
 import { create } from 'zustand';
-import { User, BusinessType, UpgradeType } from '@/types';
+import { debounce, throttle } from 'lodash';
+import { User, BusinessType, UpgradeType, GlobalStats } from '@/types';
 import { 
-  BUSINESSES, 
-  UPGRADES, 
   calculateIncome, 
-  calculateBusinessCost, 
   calculateClickPower,
-  getCurrentMarketPrice,
   updateGlobalState,
   getInitialGlobalStats,
   calculateMiningReward,
-  GlobalStats
+  calculateBusinessCost,
+  UPGRADES
 } from '@/lib/gameLogic';
 import { logger } from '@/lib/logger';
 
@@ -40,6 +36,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   income: 0,
   clickPower: 0,
   globalStats: getInitialGlobalStats(),
+  
   setUser: (user) => {
     const { globalStats } = get();
     const income = calculateIncome(user, globalStats);
@@ -47,13 +44,25 @@ export const useGameStore = create<GameState>((set, get) => ({
     set({ user, income, clickPower });
     logger.debug('User set in store', { userId: user.id, income, clickPower });
   },
-  updateCoins: (amount) => {
+
+  updateCoins: debounce((amount: number) => {
     set((state) => {
       if (!state.user) return state;
-      const newCoins = state.user.cryptoCoins + amount;
-      const updatedUser = { ...state.user, cryptoCoins: newCoins };
+      const newCoins = Math.max(0, state.user.cryptoCoins + amount);
+      const updatedUser = { 
+        ...state.user, 
+        cryptoCoins: Math.floor(newCoins),
+        fractionalCoins: ((state.user.fractionalCoins || 0) + (newCoins % 1)) % 1
+      };
       const newIncome = calculateIncome(updatedUser, state.globalStats);
       const newClickPower = calculateClickPower(updatedUser, state.globalStats);
+      logger.debug('Updating coins', { 
+        userId: state.user.id, 
+        oldCoins: state.user.cryptoCoins, 
+        newCoins: updatedUser.cryptoCoins,
+        fractionalCoins: updatedUser.fractionalCoins,
+        amount 
+      });
       return { 
         user: updatedUser,
         income: newIncome,
@@ -61,7 +70,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       };
     });
     get().syncWithServer();
-  },
+  }, 1000),
+
   buyBusiness: (businessType) => {
     const { user, globalStats } = get();
     if (!user) return;
@@ -93,6 +103,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().syncWithServer();
     }
   },
+
   buyUpgrade: (upgradeType) => {
     const { user, globalStats } = get();
     if (!user) return;
@@ -123,7 +134,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().syncWithServer();
     }
   },
-  syncWithServer: async () => {
+
+  syncWithServer: throttle(async () => {
     const { user } = get();
     if (!user) {
       logger.debug('No user to sync');
@@ -131,13 +143,21 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
   
     try {
-      logger.debug('Syncing with server', { userId: user.id, coins: user.cryptoCoins });
+      logger.debug('Syncing with server', { 
+        userId: user.id, 
+        coins: user.cryptoCoins, 
+        fractionalCoins: user.fractionalCoins 
+      });
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/game`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           action: 'sync', 
-          data: { userId: user.id, cryptoCoins: Math.floor(user.cryptoCoins) } 
+          data: { 
+            userId: user.id, 
+            cryptoCoins: user.cryptoCoins,
+            fractionalCoins: user.fractionalCoins 
+          } 
         }),
       });
   
@@ -146,28 +166,38 @@ export const useGameStore = create<GameState>((set, get) => ({
       const updatedUser = await response.json();
       logger.debug('Sync successful', { updatedUser });
       set((state) => ({ 
-        user: updatedUser,
+        user: {
+          ...updatedUser,
+          cryptoCoins: Math.max(updatedUser.cryptoCoins, state.user?.cryptoCoins || 0),
+          fractionalCoins: updatedUser.fractionalCoins || state.user?.fractionalCoins || 0
+        },
         income: calculateIncome(updatedUser, state.globalStats),
         clickPower: calculateClickPower(updatedUser, state.globalStats)
       }));
     } catch (error) {
       logger.error('Failed to sync with server:', error);
+      set({ error: 'Failed to sync with server. Please try again.' });
     }
-  },
-  updateGlobalGame: () => {
+  }, 10000, { leading: true, trailing: true }),
+
+  updateGlobalGame: throttle(() => {
     set((state) => {
       const newGlobalStats = updateGlobalState(state.globalStats);
-      const newMarketPrice = getCurrentMarketPrice(newGlobalStats);
-      return { 
-        globalStats: newGlobalStats,
-        income: state.user ? calculateIncome(state.user, newGlobalStats) : state.income,
-        clickPower: state.user ? calculateClickPower(state.user, newGlobalStats) : state.clickPower
-      };
+      if (state.user) {
+        return { 
+          globalStats: newGlobalStats,
+          income: calculateIncome(state.user, newGlobalStats),
+          clickPower: calculateClickPower(state.user, newGlobalStats)
+        };
+      }
+      return { globalStats: newGlobalStats };
     });
-  },
+  }, 30000, { leading: true, trailing: true }),
+
   fetchUserData: async (telegramId: string, username?: string) => {
     set({ isLoading: true, error: null });
     try {
+      logger.debug('Fetching user data', { telegramId, username });
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/game`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -176,28 +206,44 @@ export const useGameStore = create<GameState>((set, get) => ({
           data: { telegramId, username }
         }),
       });
-      if (!response.ok) throw new Error('Failed to fetch user data');
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
       const userData = await response.json();
-      get().setUser(userData);
+      logger.debug('User data received', userData);
+      set(state => ({
+        user: userData,
+        income: calculateIncome(userData, state.globalStats),
+        clickPower: calculateClickPower(userData, state.globalStats),
+        isLoading: false
+      }));
     } catch (error) {
-      set({ error: (error as Error).message });
-    } finally {
-      set({ isLoading: false });
+      logger.error('Error fetching user data', error as Error);
+      set({ error: (error as Error).message, isLoading: false });
     }
   },
-  mineBlock: () => {
+
+  mineBlock: debounce(() => {
     const { user, globalStats } = get();
     if (!user) return;
 
     const miningReward = calculateMiningReward(user, globalStats);
     set((state) => {
-      const updatedUser = state.user ? { ...state.user, cryptoCoins: state.user.cryptoCoins + miningReward } : null;
-      const updatedGlobalStats: GlobalStats = {
-        ...state.globalStats,
-        blockHeight: state.globalStats.blockHeight + 1,
-        lastBlockTime: new Date(),
-        mempool: Math.max(0, state.globalStats.mempool - 1000) // Assume each block clears 1000 transactions
-      };
+      const newCoins = state.user ? state.user.cryptoCoins + miningReward : 0;
+      const updatedUser = state.user ? { 
+        ...state.user, 
+        cryptoCoins: Math.floor(newCoins),
+        fractionalCoins: ((state.user.fractionalCoins || 0) + (newCoins % 1)) % 1
+      } : null;
+      const updatedGlobalStats = updateGlobalState(state.globalStats);
+      
+      logger.debug('Mining block', { 
+        userId: updatedUser?.id, 
+        miningReward, 
+        newTotalCoins: newCoins,
+        fractionalCoins: updatedUser?.fractionalCoins
+      });
+
       return {
         user: updatedUser,
         globalStats: updatedGlobalStats,
@@ -206,5 +252,5 @@ export const useGameStore = create<GameState>((set, get) => ({
       };
     });
     get().syncWithServer();
-  }
+  }, 100)
 }));

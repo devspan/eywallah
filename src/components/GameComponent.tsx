@@ -1,7 +1,5 @@
-// src/components/GameComponent.tsx
-
 "use client";
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import Image from 'next/image';
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -10,11 +8,14 @@ import { useTelegramAuth } from "@/components/TelegramAuthProvider";
 import { useGameStore } from '@/lib/store';
 import NavBar from './NavBar';
 import { PRESTIGE_COST, calculateRank } from '@/lib/gameLogic';
+import type { User, Business, Upgrade, BusinessType, UpgradeType, Achievement } from '@/types';
 import { logger } from '@/lib/logger';
+import { debounce } from 'lodash';
 
-const CLICK_COOLDOWN = 100; // 0.1 seconds
+const CLICK_COOLDOWN = 100; // 0.1 seconds 
 const SYNC_INTERVAL = 30000; // 30 seconds
 const GLOBAL_UPDATE_INTERVAL = 5000; // 5 seconds
+const INIT_COOLDOWN = 5000; // 5 seconds cooldown for initialization attempts
 
 const GameComponent: React.FC = () => {
   const { user: telegramUser, isAuthenticated } = useTelegramAuth();
@@ -23,16 +24,49 @@ const GameComponent: React.FC = () => {
     isLoading, error, updateCoins, syncWithServer, updateGlobalGame, fetchUserData, mineBlock
   } = useGameStore();
 
-  const [profilePhoto, setProfilePhoto] = React.useState<string | null>(null);
+  const [profilePhoto, setProfilePhoto] = useState<string | null>(null);
   const lastClickTimeRef = useRef(0);
   const coinRef = useRef<HTMLDivElement>(null);
+  const accumulatedCoinsRef = useRef(0);
+  const initializationAttemptRef = useRef(0);
+  const isInitializingRef = useRef(false);
+
+  const debouncedUpdateCoins = useCallback(
+    debounce((amount: number) => {
+      updateCoins(amount);
+      accumulatedCoinsRef.current = 0;
+    }, 1000),
+    [updateCoins]
+  );
+
+  const debouncedSyncWithServer = useCallback(
+    debounce(() => syncWithServer(), 5000),
+    [syncWithServer]
+  );
+
+  const initializeUser = useCallback(async () => {
+    if (isInitializingRef.current) return;
+    if (Date.now() - initializationAttemptRef.current < INIT_COOLDOWN) return;
+
+    isInitializingRef.current = true;
+    initializationAttemptRef.current = Date.now();
+
+    try {
+      logger.debug('Initializing user data', { telegramId: telegramUser?.id });
+      await fetchUserData(telegramUser!.id.toString(), telegramUser?.username);
+    } catch (error) {
+      logger.error('Error fetching user data', error);
+      toast.error('Failed to fetch user data');
+    } finally {
+      isInitializingRef.current = false;
+    }
+  }, [telegramUser, fetchUserData]);
 
   useEffect(() => {
-    if (isAuthenticated && telegramUser) {
-      logger.debug('Fetching user data', { telegramId: telegramUser.id });
-      fetchUserData(telegramUser.id.toString(), telegramUser.username);
+    if (isAuthenticated && telegramUser && !user) {
+      initializeUser();
     }
-  }, [isAuthenticated, telegramUser, fetchUserData]);
+  }, [isAuthenticated, telegramUser, user, initializeUser]);
 
   useEffect(() => {
     if (error) {
@@ -43,52 +77,50 @@ const GameComponent: React.FC = () => {
 
   useEffect(() => {
     if (user) {
-      logger.debug('Setting up game timers', { userId: user.id });
       const incomeTimer = setInterval(() => {
         const earnedCoins = income / 10;
-        updateCoins(earnedCoins);
-        logger.debug('Income earned', { earnedCoins });
+        accumulatedCoinsRef.current += earnedCoins;
+        debouncedUpdateCoins(accumulatedCoinsRef.current);
       }, 100);
 
-      const syncTimer = setInterval(() => {
-        logger.debug('Syncing with server');
-        syncWithServer();
-      }, SYNC_INTERVAL);
-
-      const globalUpdateTimer = setInterval(() => {
-        logger.debug('Updating global game state');
-        updateGlobalGame();
-      }, GLOBAL_UPDATE_INTERVAL);
-
-      return () => {
-        clearInterval(incomeTimer);
-        clearInterval(syncTimer);
-        clearInterval(globalUpdateTimer);
-      };
+      return () => clearInterval(incomeTimer);
     }
-  }, [user, income, updateCoins, syncWithServer, updateGlobalGame]);
+  }, [user, income, debouncedUpdateCoins]);
 
-  const handleCoinClick = () => {
+  useEffect(() => {
+    const syncTimer = setInterval(() => {
+      debouncedSyncWithServer();
+    }, SYNC_INTERVAL);
+
+    const globalUpdateTimer = setInterval(() => {
+      updateGlobalGame();
+    }, GLOBAL_UPDATE_INTERVAL);
+
+    return () => {
+      clearInterval(syncTimer);
+      clearInterval(globalUpdateTimer);
+    };
+  }, [debouncedSyncWithServer, updateGlobalGame]);
+
+  const handleCoinClick = useCallback(() => {
     const now = Date.now();
     if (now - lastClickTimeRef.current < CLICK_COOLDOWN) return;
     lastClickTimeRef.current = now;
-    const earnedCoins = clickPower;
-    updateCoins(earnedCoins);
     mineBlock();
-    logger.debug('Coins earned from click', { earnedCoins });
+    logger.debug('Coin clicked, mining block');
 
     if (coinRef.current) {
       coinRef.current.classList.add('animate-bounce');
       setTimeout(() => coinRef.current?.classList.remove('animate-bounce'), 300);
 
       const floatingText = document.createElement('div');
-      floatingText.textContent = `+${earnedCoins.toFixed(2)}`;
+      floatingText.textContent = `+${clickPower.toFixed(2)}`;
       floatingText.className = 'absolute text-purple-400 font-bold text-2xl animate-float-up';
       floatingText.style.left = `${Math.random() * 80 + 10}%`;
       coinRef.current.appendChild(floatingText);
       setTimeout(() => floatingText.remove(), 1000);
     }
-  };
+  }, [mineBlock, clickPower]);
 
   if (isLoading) {
     return (
@@ -108,22 +140,10 @@ const GameComponent: React.FC = () => {
   }
 
   if (!user) {
-    logger.warn('User data not available');
     return (
       <div className="min-h-screen bg-[#1a2035] text-white flex flex-col items-center justify-center p-4">
-        <h1 className="text-2xl font-bold mb-4">Error: Unable to load user data</h1>
-        <p className="text-red-500 mb-4">{error || 'Unknown error occurred'}</p>
-        <button
-          onClick={() => {
-            if (telegramUser) {
-              logger.debug('Retrying user data fetch', { telegramId: telegramUser.id });
-              fetchUserData(telegramUser.id.toString(), telegramUser.username);
-            }
-          }}
-          className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
-        >
-          Retry
-        </button>
+        <h1 className="text-2xl font-bold mb-4">Loading User Data</h1>
+        <div className="animate-spin rounded-full h-32 w-32 border-t-2 border-b-2 border-purple-500"></div>
       </div>
     );
   }
@@ -213,4 +233,4 @@ const GameComponent: React.FC = () => {
   );
 };
 
-export default GameComponent;
+export default React.memo(GameComponent);
