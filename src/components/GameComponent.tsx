@@ -1,3 +1,5 @@
+// src/components/GameComponent.tsx
+
 "use client";
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import Image from 'next/image';
@@ -27,14 +29,14 @@ const GameComponent: React.FC = () => {
   const [profilePhoto, setProfilePhoto] = useState<string | null>(null);
   const lastClickTimeRef = useRef(0);
   const coinRef = useRef<HTMLDivElement>(null);
-  const accumulatedCoinsRef = useRef(0);
+  const accumulatedCoinsRef = useRef(BigInt(0));
   const initializationAttemptRef = useRef(0);
   const isInitializingRef = useRef(false);
 
   const debouncedUpdateCoins = useCallback(
-    debounce((amount: number) => {
+    debounce((amount: bigint) => {
       updateCoins(amount);
-      accumulatedCoinsRef.current = 0;
+      accumulatedCoinsRef.current = BigInt(0);
     }, 1000),
     [updateCoins]
   );
@@ -78,7 +80,7 @@ const GameComponent: React.FC = () => {
   useEffect(() => {
     if (user) {
       const incomeTimer = setInterval(() => {
-        const earnedCoins = income / 10;
+        const earnedCoins = BigInt(Math.floor(Number(income) / 10));
         accumulatedCoinsRef.current += earnedCoins;
         debouncedUpdateCoins(accumulatedCoinsRef.current);
       }, 100);
@@ -114,7 +116,7 @@ const GameComponent: React.FC = () => {
       setTimeout(() => coinRef.current?.classList.remove('animate-bounce'), 300);
 
       const floatingText = document.createElement('div');
-      floatingText.textContent = `+${clickPower.toFixed(2)}`;
+      floatingText.textContent = `+${clickPower}`;
       floatingText.className = 'absolute text-purple-400 font-bold text-2xl animate-float-up';
       floatingText.style.left = `${Math.random() * 80 + 10}%`;
       coinRef.current.appendChild(floatingText);
@@ -148,8 +150,21 @@ const GameComponent: React.FC = () => {
     );
   }
 
-  const userRank = calculateRank(user.cryptoCoins);
+  const userRank = calculateRank(BigInt(user.cryptoCoins));
   logger.debug('Rendering game component', { userId: user.id, rank: userRank, coins: user.cryptoCoins });
+
+  const formatLargeNumber = (num: bigint): string => {
+    if (num < BigInt(1000000)) {
+      return num.toLocaleString();
+    }
+    const suffixes = ['', 'K', 'M', 'B', 'T'];
+    const suffixNum = Math.floor((num.toString().length - 1) / 3);
+    let shortValue = (Number(num) / Math.pow(1000, suffixNum)).toFixed(1);
+    if (shortValue.endsWith('.0')) {
+      shortValue = shortValue.slice(0, -2);
+    }
+    return shortValue + suffixes[suffixNum];
+  };
 
   return (
     <div className="min-h-screen bg-[#1a2035] text-white flex flex-col">
@@ -188,7 +203,7 @@ const GameComponent: React.FC = () => {
               className="p-4 rounded-full"
             />
           </div>
-          <p className="text-5xl font-bold text-purple-400 mb-1">{Math.floor(user.cryptoCoins).toLocaleString()}</p>
+          <p className="text-5xl font-bold text-purple-400 mb-1">{formatLargeNumber(BigInt(user.cryptoCoins))}</p>
           <p className="text-xl text-gray-400 mb-2">Crypto Coins</p>
           <p className="text-sm text-green-400 mb-6">Market Price: ${globalStats.coinMarketPrice.toFixed(2)}</p>
 
@@ -196,13 +211,13 @@ const GameComponent: React.FC = () => {
             <Card className="flex-1 bg-gradient-to-br from-blue-600 to-purple-600 shadow-md hover:shadow-lg transition-shadow">
               <CardContent className="p-3">
                 <p className="text-gray-200 text-sm">Income</p>
-                <p className="text-lg font-bold">{income.toFixed(2)}/s</p>
+                <p className="text-lg font-bold">{formatLargeNumber(BigInt(income))}/s</p>
               </CardContent>
             </Card>
             <Card className="flex-1 bg-gradient-to-br from-pink-600 to-red-600 shadow-md hover:shadow-lg transition-shadow">
               <CardContent className="p-3">
                 <p className="text-gray-200 text-sm">Click Power</p>
-                <p className="text-lg font-bold">{clickPower.toFixed(2)}</p>
+                <p className="text-lg font-bold">{formatLargeNumber(BigInt(clickPower))}</p>
               </CardContent>
             </Card>
           </div>
@@ -222,7 +237,7 @@ const GameComponent: React.FC = () => {
         <div className="w-full mb-2">
           <p className="text-xs text-purple-400 mb-1">Progress to Next Prestige</p>
           <Progress 
-            value={Math.min((user.cryptoCoins / PRESTIGE_COST) * 100, 100)} 
+            value={Math.min((Number(BigInt(user.cryptoCoins) * BigInt(100) / BigInt(PRESTIGE_COST))), 100)} 
             className="h-2 bg-gray-700"
           />
         </div>

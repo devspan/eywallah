@@ -13,12 +13,11 @@ model User {
   id              String   @id @default(cuid())
   telegramId      String   @unique
   username        String?
-  cryptoCoins     Float    @default(0)
-  fractionalCoins Float    @default(0)
+  cryptoCoins     BigInt   @default(0)
   prestigePoints  Int      @default(0)
   lastActive      DateTime @default(now())
   incomeMultiplier Float   @default(1)
-  offlineEarnings Float    @default(0)
+  offlineEarnings BigInt   @default(0)
   businesses      Business[]
   upgrades        Upgrade[]
   achievements    Achievement[]

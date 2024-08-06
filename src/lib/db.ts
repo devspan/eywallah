@@ -23,7 +23,7 @@ function convertPrismaUserToUser(prismaUser: PrismaUser): User {
       type: u.type as UpgradeType
     })),
     achievements: prismaUser.achievements,
-    offlineEarnings: prismaUser.offlineEarnings
+    cryptoCoins: BigInt(prismaUser.cryptoCoins.toString())
   } as User;
 }
 
@@ -82,11 +82,10 @@ export async function createUser(telegramId: string, username: string | null): P
       data: {
         telegramId,
         username,
-        cryptoCoins: 0,
+        cryptoCoins: BigInt(0),
         lastActive: new Date(),
         prestigePoints: 0,
         incomeMultiplier: 1,
-        offlineEarnings: 0,
       },
       include: {
         businesses: true,
@@ -107,7 +106,10 @@ export async function updateUser(userId: string, data: Partial<Omit<User, 'busin
     logger.debug('Updating user', { userId, data });
     const updatedUser = await prisma.user.update({
       where: { id: userId },
-      data: data as Prisma.UserUpdateInput,
+      data: {
+        ...data,
+        cryptoCoins: data.cryptoCoins ? BigInt(data.cryptoCoins.toString()) : undefined,
+      } as Prisma.UserUpdateInput,
       include: {
         businesses: true,
         upgrades: true,
@@ -198,7 +200,7 @@ export async function addUpgrade(userId: string, upgradeType: UpgradeType): Prom
   }
 }
 
-export async function calculateOfflineEarnings(userId: string): Promise<{ user: User; offlineEarnings: number }> {
+export async function calculateOfflineEarnings(userId: string): Promise<{ user: User; offlineEarnings: bigint }> {
   try {
     logger.debug('Calculating offline earnings', { userId });
     const user = await getUserById(userId);
@@ -211,13 +213,12 @@ export async function calculateOfflineEarnings(userId: string): Promise<{ user: 
     const timeDiffInSeconds = (now.getTime() - user.lastActive.getTime()) / 1000;
     const globalStats = await getGlobalState();
     const income = calculateIncome(user, globalStats);
-    const offlineEarnings = income * timeDiffInSeconds;
+    const offlineEarnings = BigInt(Math.floor(income * timeDiffInSeconds));
 
     logger.debug('Updating user with offline earnings', { userId, offlineEarnings });
     const updatedUser = await updateUser(userId, {
       cryptoCoins: user.cryptoCoins + offlineEarnings,
       lastActive: now,
-      offlineEarnings: offlineEarnings,
     });
 
     logger.debug('Offline earnings calculated and updated', { userId, offlineEarnings });
@@ -238,13 +239,12 @@ export async function resetUserProgress(userId: string, prestigePoints: number):
       const user = await prisma.user.update({
         where: { id: userId },
         data: {
-          cryptoCoins: 0,
+          cryptoCoins: BigInt(0),
           prestigePoints: {
             increment: prestigePoints,
           },
           incomeMultiplier: 1 + prestigePoints * 0.1,
           lastActive: new Date(),
-          offlineEarnings: 0,
         },
         include: {
           businesses: true,
@@ -264,12 +264,7 @@ export async function resetUserProgress(userId: string, prestigePoints: number):
   }
 }
 
-export function calculateBusinessCost(businessType: BusinessType, currentCount: number): number {
-  logger.debug('Calculating business cost', { businessType, currentCount });
-  return Math.floor(BUSINESSES[businessType].baseCost * Math.pow(1.15, currentCount));
-}
-
-export async function syncUserData(userId: string, cryptoCoins: number): Promise<User & { income: number, clickPower: number }> {
+export async function syncUserData(userId: string, cryptoCoins: bigint): Promise<User & { income: number, clickPower: number }> {
   try {
     logger.debug('Syncing user data', { userId, cryptoCoins });
     const user = await updateUser(userId, { cryptoCoins, lastActive: new Date() });
@@ -319,3 +314,5 @@ export async function updateGlobalState(newState: Partial<GlobalStats>): Promise
     throw error;
   }
 }
+
+logger.debug('db.ts loaded and initialized');

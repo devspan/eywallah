@@ -1,15 +1,13 @@
-// Game-related types
+// Core game types
 
 export interface User {
   id: string;
   telegramId: string;
   username: string | null;
-  cryptoCoins: number;
-  fractionalCoins: number;
+  cryptoCoins: bigint;
   prestigePoints: number;
   lastActive: Date;
   incomeMultiplier: number;
-  offlineEarnings: number;
   businesses: Business[];
   upgrades: Upgrade[];
   achievements: Achievement[];
@@ -49,7 +47,7 @@ export type UpgradeType = 'fasterInternet' | 'betterCooling' | 'aiOptimization' 
 
 export interface BusinessData {
   name: string;
-  baseCost: number;
+  baseCost: bigint;
   baseHashRate?: number;
   baseTransactionFee?: number;
   baseStakingReward?: number;
@@ -57,7 +55,7 @@ export interface BusinessData {
 
 export interface UpgradeData {
   name: string;
-  cost: number;
+  cost: bigint;
   effect: number;
 }
 
@@ -76,8 +74,7 @@ export interface InitData {
 
 export interface SyncData {
   userId: string;
-  cryptoCoins: number;
-  fractionalCoins: number;
+  cryptoCoins: string; // BigInt as string
 }
 
 export interface BuyBusinessData {
@@ -94,15 +91,60 @@ export interface MineBlockData {
   userId: string;
 }
 
-// Telegram-related types
+// Game state types
 
-export interface TelegramUser {
-  id: number;
-  first_name: string;
-  last_name?: string;
-  username?: string;
-  language_code?: string;
-  is_premium?: boolean;
+export interface GameState {
+  user: User | null;
+  isLoading: boolean;
+  error: string | null;
+  income: number;
+  clickPower: number;
+  globalStats: GlobalStats;
 }
 
-// Add any other types specific to your project here
+// Action types for state management
+
+export type GameAction =
+  | { type: 'SET_USER'; payload: User }
+  | { type: 'UPDATE_COINS'; payload: bigint }
+  | { type: 'BUY_BUSINESS'; payload: { businessType: BusinessType; cost: bigint } }
+  | { type: 'BUY_UPGRADE'; payload: { upgradeType: UpgradeType; cost: bigint } }
+  | { type: 'UPDATE_GLOBAL_STATS'; payload: GlobalStats }
+  | { type: 'SET_ERROR'; payload: string | null }
+  | { type: 'SET_LOADING'; payload: boolean }
+  | { type: 'UPDATE_INCOME'; payload: number }
+  | { type: 'UPDATE_CLICK_POWER'; payload: number };
+
+// Leaderboard types
+
+export interface LeaderboardEntry {
+  userId: string;
+  username: string | null;
+  cryptoCoins: bigint;
+  rank: number;
+}
+
+export interface LeaderboardData {
+  entries: LeaderboardEntry[];
+  userRank: number | null;
+}
+
+// Game logic types
+
+export interface IncomeCalculationResult {
+  totalIncome: bigint;
+  miningIncome: bigint;
+  transactionFees: bigint;
+  stakingRewards: bigint;
+}
+
+export interface ClickPowerCalculationResult {
+  baseClickPower: number;
+  finalClickPower: number;
+  clickPowerValue: bigint;
+}
+
+export interface OfflineProgressResult {
+  earnedCoins: bigint;
+  timePassed: number;
+}
