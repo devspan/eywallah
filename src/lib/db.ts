@@ -264,7 +264,7 @@ export async function resetUserProgress(userId: string, prestigePoints: number):
   }
 }
 
-export async function syncUserData(userId: string, cryptoCoins: bigint): Promise<User & { income: number, clickPower: number }> {
+export async function syncUserData(userId: string, cryptoCoins: bigint): Promise<User & { income: bigint, clickPower: bigint }> {
   try {
     logger.debug('Syncing user data', { userId, cryptoCoins });
     const user = await updateUser(userId, { cryptoCoins, lastActive: new Date() });
@@ -300,15 +300,20 @@ export async function getGlobalState(): Promise<GlobalStats> {
   }
 }
 
-export async function updateGlobalState(newState: Partial<GlobalStats>): Promise<GlobalStats> {
+
+export async function updateGlobalState(currentState: GlobalStats): Promise<GlobalStats> {
   try {
-    logger.debug('Updating global state', { newState });
-    const updatedState = await prisma.globalState.update({
+    logger.debug('Updating global state');
+    const currentState = await getGlobalState();
+    const updatedState = updateGlobalState(currentState);
+    
+    const savedState = await prisma.globalState.update({
       where: { id: 'global' },
-      data: newState,
+      data: updatedState,
     });
+    
     logger.debug('Global state updated successfully');
-    return updatedState as GlobalStats;
+    return savedState as GlobalStats;
   } catch (error) {
     logger.error('Error updating global state', { error });
     throw error;

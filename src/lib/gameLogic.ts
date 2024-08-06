@@ -124,8 +124,8 @@ export function calculateUserHashRate(user: User): bigint {
 export function calculateClickPower(user: User, globalStats: GlobalStats): bigint {
   logger.debug('Calculating click power for user', { userId: user.id });
   
-  // Dynamic base click power based on global hash rate and difficulty
-  let baseClickPower = BigInt(Math.floor(0.001 * Math.sqrt(globalStats.globalHashRate / globalStats.difficulty)));
+  // Set base click power to 1
+  let baseClickPower = BigInt(1);
   
   // Apply click upgrade
   const clickUpgrade = user.upgrades.find(upgrade => upgrade.type === 'clickUpgrade');
@@ -219,22 +219,13 @@ export function updateGlobalState(currentStats: GlobalStats): GlobalStats {
   const newStats: GlobalStats = {
     id: currentStats.id,
     blockHeight: currentStats.blockHeight + 1,
-    difficulty: currentStats.difficulty,
+    difficulty: calculateNetworkDifficulty(currentStats),
     globalHashRate: Math.floor(currentStats.globalHashRate * 1.0001),
     lastBlockTime: new Date(),
     networkHashRate: Math.floor(currentStats.globalHashRate * (0.9 + Math.random() * 0.2)),
     mempool: Math.max(0, currentStats.mempool - 1000 + Math.floor(Math.random() * 2000)),
-    coinMarketPrice: Math.floor(currentStats.coinMarketPrice * (1 + (Math.random() - 0.5) * 0.02)),
+    coinMarketPrice: simulateMarketFluctuation(currentStats.coinMarketPrice),
   };
-
-  if (newStats.blockHeight % DIFFICULTY_ADJUSTMENT_INTERVAL === 0) {
-    const timeElapsed = newStats.lastBlockTime.getTime() - currentStats.lastBlockTime.getTime();
-    const expectedTime = DIFFICULTY_ADJUSTMENT_INTERVAL * TARGET_BLOCK_TIME * 1000;
-    newStats.difficulty = Math.floor(newStats.difficulty * expectedTime / timeElapsed);
-    newStats.difficulty = Math.max(INITIAL_MINING_DIFFICULTY, newStats.difficulty);
-  }
-
-  newStats.coinMarketPrice = Math.max(1, newStats.coinMarketPrice);
 
   return newStats;
 }
@@ -520,17 +511,12 @@ export function simulateMarketFluctuation(currentPrice: number): number {
 }
 
 export function calculateNetworkDifficulty(globalStats: GlobalStats): number {
-  const timeSinceLastAdjustment = globalStats.blockHeight % DIFFICULTY_ADJUSTMENT_INTERVAL;
-  const expectedTime = timeSinceLastAdjustment * TARGET_BLOCK_TIME;
-  const actualTime = (new Date().getTime() - globalStats.lastBlockTime.getTime()) / 1000;
-  
-  if (timeSinceLastAdjustment === 0) {
-    return Math.max(
-      INITIAL_MINING_DIFFICULTY,
-      Math.floor(globalStats.difficulty * (expectedTime / actualTime))
-    );
+  if (globalStats.blockHeight % DIFFICULTY_ADJUSTMENT_INTERVAL === 0) {
+    const timeElapsed = new Date().getTime() - globalStats.lastBlockTime.getTime();
+    const expectedTime = DIFFICULTY_ADJUSTMENT_INTERVAL * TARGET_BLOCK_TIME * 1000;
+    const newDifficulty = Math.floor(globalStats.difficulty * expectedTime / timeElapsed);
+    return Math.max(INITIAL_MINING_DIFFICULTY, newDifficulty);
   }
-  
   return globalStats.difficulty;
 }
 
@@ -541,3 +527,5 @@ export function mineBlock(user: User, clickPower: bigint): { updatedCoins: bigin
 }
 
 logger.debug('gameLogic.ts loaded and initialized');
+
+export type { GlobalStats };

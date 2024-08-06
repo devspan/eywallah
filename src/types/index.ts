@@ -8,6 +8,7 @@ export interface User {
   prestigePoints: number;
   lastActive: Date;
   incomeMultiplier: number;
+  offlineEarnings: number; 
   businesses: Business[];
   upgrades: Upgrade[];
   achievements: Achievement[];
@@ -139,7 +140,7 @@ export interface IncomeCalculationResult {
 }
 
 export interface ClickPowerCalculationResult {
-  baseClickPower: number;
+  baseClickPower: bigint;
   finalClickPower: number;
   clickPowerValue: bigint;
 }

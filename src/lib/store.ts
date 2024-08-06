@@ -1,3 +1,5 @@
+// src/lib/store.ts
+
 import { create } from 'zustand';
 import { debounce, throttle } from 'lodash';
 import { User, BusinessType, UpgradeType, GlobalStats } from '@/types';
@@ -25,7 +27,7 @@ interface GameState {
   buyBusiness: (businessType: BusinessType) => void;
   buyUpgrade: (upgradeType: UpgradeType) => void;
   syncWithServer: () => Promise<void>;
-  updateGlobalGame: () => void;
+  updateGlobalGame: () => Promise<void>;
   fetchUserData: (telegramId: string, username?: string) => Promise<void>;
   mineBlock: () => void;
 }
@@ -50,10 +52,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     set((state) => {
       if (!state.user) return state;
       const newCoins = state.user.cryptoCoins + amount;
-      const updatedUser = { 
-        ...state.user, 
-        cryptoCoins: newCoins
-      };
+      const updatedUser = { ...state.user, cryptoCoins: newCoins };
       const newIncome = calculateIncome(updatedUser, state.globalStats);
       const newClickPower = calculateClickPower(updatedUser, state.globalStats);
       logger.debug('Updating coins', { 
@@ -107,7 +106,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const { user, globalStats } = get();
     if (!user) return;
 
-    const upgradeCost = BigInt(UPGRADES[upgradeType].cost);
+    const upgradeCost = UPGRADES[upgradeType].cost;
 
     if (user.cryptoCoins >= upgradeCost && !user.upgrades.some(u => u.type === upgradeType)) {
       set((state) => {
@@ -165,8 +164,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       set((state) => ({ 
         user: {
           ...updatedUser,
-          cryptoCoins: BigInt(updatedUser.cryptoCoins),
-          offlineEarnings: BigInt(updatedUser.offlineEarnings)
+          cryptoCoins: BigInt(updatedUser.cryptoCoins)
         },
         income: calculateIncome(updatedUser, state.globalStats),
         clickPower: calculateClickPower(updatedUser, state.globalStats)
@@ -177,18 +175,31 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
   }, 10000, { leading: true, trailing: true }),
 
-  updateGlobalGame: throttle(() => {
-    set((state) => {
-      const newGlobalStats = updateGlobalState(state.globalStats);
-      if (state.user) {
-        return { 
-          globalStats: newGlobalStats,
-          income: calculateIncome(state.user, newGlobalStats),
-          clickPower: calculateClickPower(state.user, newGlobalStats)
-        };
-      }
-      return { globalStats: newGlobalStats };
-    });
+  updateGlobalGame: throttle(async () => {
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/game`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'updateGlobalState' }),
+      });
+
+      if (!response.ok) throw new Error('Failed to update global state');
+
+      const newGlobalStats: GlobalStats = await response.json();
+      set((state) => {
+        if (state.user) {
+          return { 
+            globalStats: newGlobalStats,
+            income: calculateIncome(state.user, newGlobalStats),
+            clickPower: calculateClickPower(state.user, newGlobalStats)
+          };
+        }
+        return { globalStats: newGlobalStats };
+      });
+    } catch (error) {
+      logger.error('Failed to update global game state:', error);
+      set({ error: 'Failed to update global game state. Please try again.' });
+    }
   }, 30000, { leading: true, trailing: true }),
 
   fetchUserData: async (telegramId: string, username?: string) => {
@@ -208,15 +219,13 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
       const userData = await response.json();
       logger.debug('User data received', userData);
-      const user = {
-        ...userData,
-        cryptoCoins: BigInt(userData.cryptoCoins),
-        offlineEarnings: BigInt(userData.offlineEarnings)
-      };
       set(state => ({
-        user,
-        income: calculateIncome(user, state.globalStats),
-        clickPower: calculateClickPower(user, state.globalStats),
+        user: {
+          ...userData,
+          cryptoCoins: BigInt(userData.cryptoCoins)
+        },
+        income: calculateIncome(userData, state.globalStats),
+        clickPower: calculateClickPower(userData, state.globalStats),
         isLoading: false
       }));
     } catch (error) {
@@ -239,6 +248,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       
       logger.debug('Mining block', { 
         userId: updatedUser?.id, 
+        miningReward: clickPower.toString(), 
         newTotalCoins: updatedCoins.toString()
       });
 

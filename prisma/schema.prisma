@@ -24,11 +24,12 @@ model User {
 }
 
 model Business {
-  id     String @id @default(cuid())
-  type   String
-  count  Int
-  user   User   @relation(fields: [userId], references: [id])
-  userId String
+  id             String   @id @default(cuid())
+  type           String
+  count          Int
+  lastCalculated DateTime @default(now())
+  user           User     @relation(fields: [userId], references: [id])
+  userId         String
 }
 
 model Upgrade {
