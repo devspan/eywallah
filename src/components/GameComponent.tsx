@@ -1,3 +1,5 @@
+// src/components/GameComponent.tsx
+
 "use client";
 import React, { useEffect, useRef } from 'react';
 import Image from 'next/image';
@@ -17,8 +19,8 @@ const GLOBAL_UPDATE_INTERVAL = 5000; // 5 seconds
 const GameComponent: React.FC = () => {
   const { user: telegramUser, isAuthenticated } = useTelegramAuth();
   const { 
-    user, localCoins, income, clickPower, marketPrice, globalStats,
-    isLoading, error, updateLocalCoins, syncWithServer, updateGlobalGame, fetchUserData
+    user, income, clickPower, globalStats,
+    isLoading, error, updateCoins, syncWithServer, updateGlobalGame, fetchUserData, mineBlock
   } = useGameStore();
 
   const [profilePhoto, setProfilePhoto] = React.useState<string | null>(null);
@@ -44,7 +46,7 @@ const GameComponent: React.FC = () => {
       logger.debug('Setting up game timers', { userId: user.id });
       const incomeTimer = setInterval(() => {
         const earnedCoins = income / 10;
-        updateLocalCoins(earnedCoins);
+        updateCoins(earnedCoins);
         logger.debug('Income earned', { earnedCoins });
       }, 100);
 
@@ -64,14 +66,15 @@ const GameComponent: React.FC = () => {
         clearInterval(globalUpdateTimer);
       };
     }
-  }, [user, income, updateLocalCoins, syncWithServer, updateGlobalGame]);
+  }, [user, income, updateCoins, syncWithServer, updateGlobalGame]);
 
   const handleCoinClick = () => {
     const now = Date.now();
     if (now - lastClickTimeRef.current < CLICK_COOLDOWN) return;
     lastClickTimeRef.current = now;
     const earnedCoins = clickPower;
-    updateLocalCoins(earnedCoins);
+    updateCoins(earnedCoins);
+    mineBlock();
     logger.debug('Coins earned from click', { earnedCoins });
 
     if (coinRef.current) {
@@ -126,7 +129,7 @@ const GameComponent: React.FC = () => {
   }
 
   const userRank = calculateRank(user.cryptoCoins);
-  logger.debug('Rendering game component', { userId: user.id, rank: userRank, localCoins });
+  logger.debug('Rendering game component', { userId: user.id, rank: userRank, coins: user.cryptoCoins });
 
   return (
     <div className="min-h-screen bg-[#1a2035] text-white flex flex-col">
@@ -165,9 +168,9 @@ const GameComponent: React.FC = () => {
               className="p-4 rounded-full"
             />
           </div>
-          <p className="text-5xl font-bold text-purple-400 mb-1">{Math.floor(localCoins).toLocaleString()}</p>
+          <p className="text-5xl font-bold text-purple-400 mb-1">{Math.floor(user.cryptoCoins).toLocaleString()}</p>
           <p className="text-xl text-gray-400 mb-2">Crypto Coins</p>
-          <p className="text-sm text-green-400 mb-6">Market Price: ${marketPrice.toFixed(2)}</p>
+          <p className="text-sm text-green-400 mb-6">Market Price: ${globalStats.coinMarketPrice.toFixed(2)}</p>
 
           <div className="flex gap-4 mb-6 w-full max-w-md">
             <Card className="flex-1 bg-gradient-to-br from-blue-600 to-purple-600 shadow-md hover:shadow-lg transition-shadow">
@@ -199,7 +202,7 @@ const GameComponent: React.FC = () => {
         <div className="w-full mb-2">
           <p className="text-xs text-purple-400 mb-1">Progress to Next Prestige</p>
           <Progress 
-            value={Math.min((localCoins / PRESTIGE_COST) * 100, 100)} 
+            value={Math.min((user.cryptoCoins / PRESTIGE_COST) * 100, 100)} 
             className="h-2 bg-gray-700"
           />
         </div>

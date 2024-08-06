@@ -1,21 +1,26 @@
+// src/lib/gameLogic.ts
+
 import type { User, Business, Upgrade, BusinessType, UpgradeType } from '@/types';
 import { logger } from '@/lib/logger';
 
 // Constants
 export const PRESTIGE_COST = 1e6; // 1 million coins to prestige
-export const MAX_TOTAL_SUPPLY = 200e9; // 200 billion max total supply
+export const MAX_TOTAL_SUPPLY = 21e6; // 21 million max total supply (like Bitcoin)
 export const INITIAL_BLOCK_REWARD = 50; // Initial block reward
 export const HALVING_INTERVAL = 210000; // Number of blocks between halvings
 export const INITIAL_MINING_DIFFICULTY = 1;
 export const TARGET_BLOCK_TIME = 600; // 10 minutes in seconds
 export const DIFFICULTY_ADJUSTMENT_INTERVAL = 2016; // Number of blocks between difficulty adjustments
 
-// Global state
-let globalBlockHeight = 0;
-let globalMiningDifficulty = INITIAL_MINING_DIFFICULTY;
-let globalHashRate = 1000; // Initial global hash rate
-let lastDifficultyAdjustmentTime = Date.now();
-let coinMarketPrice = 1; // Initial market price in USD
+export interface GlobalStats {
+  blockHeight: number;
+  difficulty: number;
+  globalHashRate: number;
+  lastBlockTime: Date;
+  networkHashRate: number;
+  mempool: number;
+  coinMarketPrice: number;
+}
 
 export const BUSINESSES: Record<BusinessType, Business> = {
   gpuMiner: { name: "GPU Miner", baseCost: 15, baseHashRate: 1 },
@@ -45,55 +50,60 @@ export const RANKS = [
   { name: "Crypto Overlord", threshold: 1e17 }
 ];
 
-export function calculateIncome(user: User): number {
+export function calculateIncome(user: User, globalStats: GlobalStats): number {
   logger.debug('Calculating income for user', { userId: user.id });
   
-  const miningIncome = calculateMiningReward(user);
-  const transactionFees = calculateTransactionFees(user);
-  const stakingRewards = calculateStakingRewards(user);
+  const miningIncome = calculateMiningReward(user, globalStats);
+  const transactionFees = calculateTransactionFees(user, globalStats);
+  const stakingRewards = calculateStakingRewards(user, globalStats);
   
-  const totalIncome = (miningIncome + transactionFees + stakingRewards) * coinMarketPrice;
+  const totalIncome = (miningIncome + transactionFees + stakingRewards) * globalStats.coinMarketPrice;
   const finalIncome = totalIncome * user.incomeMultiplier * (1 + user.prestigePoints * 0.02);
   
   logger.debug('Income calculated', { userId: user.id, miningIncome, transactionFees, stakingRewards, totalIncome, finalIncome });
   return finalIncome;
 }
 
-export function calculateMiningReward(user: User): number {
-  const blockReward = INITIAL_BLOCK_REWARD / Math.pow(2, Math.floor(globalBlockHeight / HALVING_INTERVAL));
+export function calculateMiningReward(user: User, globalStats: GlobalStats): number {
+  const blockReward = INITIAL_BLOCK_REWARD / Math.pow(2, Math.floor(globalStats.blockHeight / HALVING_INTERVAL));
   const userHashRate = calculateUserHashRate(user);
-  const miningProbability = userHashRate / globalHashRate;
+  const miningProbability = userHashRate / globalStats.networkHashRate;
   
   const reward = blockReward * miningProbability;
   
-  logger.debug('Mining reward calculated', { userId: user.id, reward, blockReward, userHashRate, globalHashRate });
+  logger.debug('Mining reward calculated', { userId: user.id, reward, blockReward, userHashRate, networkHashRate: globalStats.networkHashRate });
   return reward;
 }
 
-function calculateTransactionFees(user: User): number {
+function calculateTransactionFees(user: User, globalStats: GlobalStats): number {
   let fees = 0;
   for (const business of user.businesses) {
-    if (BUSINESSES[business.type].baseTransactionFee) {
-      fees += BUSINESSES[business.type].baseTransactionFee * business.count * globalBlockHeight * 0.01;
+    const businessData = BUSINESSES[business.type];
+    if ('baseTransactionFee' in businessData) {
+      fees += (businessData.baseTransactionFee as number) * business.count * globalStats.mempool * 0.0001;
     }
   }
   return fees;
 }
 
-function calculateStakingRewards(user: User): number {
+function calculateStakingRewards(user: User, globalStats: GlobalStats): number {
   const defiPlatform = user.businesses.find(b => b.type === 'defiPlatform');
   if (!defiPlatform) return 0;
   
-  const baseReward = BUSINESSES.defiPlatform.baseStakingReward * defiPlatform.count;
-  return baseReward * user.cryptoCoins * 0.1; // Assume 10% of coins are staked
+  const businessData = BUSINESSES.defiPlatform;
+  if ('baseStakingReward' in businessData) {
+    const baseReward = businessData.baseStakingReward as number;
+    return baseReward * defiPlatform.count * user.cryptoCoins * 0.1; // Assume 10% of coins are staked
+  }
+  return 0;
 }
 
 export function calculateUserHashRate(user: User): number {
   let totalHashRate = 0;
   for (const business of user.businesses) {
     const businessData = BUSINESSES[business.type];
-    if (businessData.baseHashRate) {
-      totalHashRate += businessData.baseHashRate * business.count;
+    if ('baseHashRate' in businessData) {
+      totalHashRate += (businessData.baseHashRate as number) * business.count;
     }
   }
   
@@ -107,35 +117,38 @@ export function calculateUserHashRate(user: User): number {
   return totalHashRate;
 }
 
-export function calculateClickPower(user: User): number {
+export function calculateClickPower(user: User, globalStats: GlobalStats): number {
   logger.debug('Calculating click power for user', { userId: user.id });
-  let clickPower = 1000; // Base click power
+  
+  // Dynamic base click power based on global hash rate and difficulty
+  let baseClickPower = 0.001 * Math.sqrt(globalStats.globalHashRate / globalStats.difficulty);
   
   // Apply click upgrade
   const clickUpgrade = user.upgrades.find(upgrade => upgrade.type === 'clickUpgrade');
   if (clickUpgrade) {
-    clickPower *= UPGRADES.clickUpgrade.effect;
+    baseClickPower *= UPGRADES.clickUpgrade.effect;
   }
   
   // Apply other upgrades to click power (reduced effect)
   for (const upgrade of user.upgrades) {
     if (upgrade.type !== 'clickUpgrade') {
-      clickPower *= Math.sqrt(UPGRADES[upgrade.type].effect);
+      baseClickPower *= Math.sqrt(UPGRADES[upgrade.type].effect);
     }
   }
 
-  const finalClickPower = clickPower * user.incomeMultiplier * (1 + user.prestigePoints * 0.02) * coinMarketPrice;
-  logger.debug('Click power calculated', { userId: user.id, clickPower, finalClickPower });
-  return finalClickPower;
+  // Apply user's income multiplier and prestige points
+  const finalClickPower = baseClickPower * user.incomeMultiplier * (1 + user.prestigePoints * 0.02);
+  
+  // Apply current market price
+  const clickPowerValue = finalClickPower * globalStats.coinMarketPrice;
+
+  logger.debug('Click power calculated', { userId: user.id, baseClickPower, finalClickPower, clickPowerValue });
+  return clickPowerValue;
 }
 
 export function calculateBusinessCost(businessType: BusinessType, currentCount: number): number {
   logger.debug('Calculating business cost', { businessType, currentCount });
   const business = BUSINESSES[businessType];
-  if (!business) {
-    logger.error(`Business type ${businessType} not found`);
-    return 0;
-  }
   const cost = Math.floor(business.baseCost * Math.pow(1.15, currentCount));
   logger.debug('Business cost calculated', { businessType, currentCount, cost });
   return cost;
@@ -157,11 +170,16 @@ export function getUpgradeTypes(): UpgradeType[] {
 }
 
 export function estimateTotalSupply(user: User): number {
-  const totalBusinessIncome = Object.values(BUSINESSES).reduce((total, business) => total + (business.baseHashRate || 0), 0);
+  const totalBusinessIncome = Object.values(BUSINESSES).reduce((total, business) => {
+    if ('baseHashRate' in business) {
+      return total + (business.baseHashRate as number);
+    }
+    return total;
+  }, 0);
   const maxUpgradeEffect = Object.values(UPGRADES).reduce((max, upgrade) => Math.max(max, upgrade.effect), 1);
   const maxPrestigeEffect = 1 + (MAX_TOTAL_SUPPLY / PRESTIGE_COST) * 0.02;
   
-  const theoreticalMaxIncomePerSecond = totalBusinessIncome * maxUpgradeEffect * maxPrestigeEffect * coinMarketPrice;
+  const theoreticalMaxIncomePerSecond = totalBusinessIncome * maxUpgradeEffect * maxPrestigeEffect;
   const estimatedTotalSupply = user.cryptoCoins + (theoreticalMaxIncomePerSecond * 365 * 24 * 60 * 60); // Estimate for a year
 
   return Math.min(estimatedTotalSupply, MAX_TOTAL_SUPPLY);
@@ -187,54 +205,52 @@ export function estimateTimeToExhaustSupply(currentSupply: number, incomePerSeco
   return `${years} years, ${months} months, and ${days} days`;
 }
 
-export function updateGlobalState() {
-  globalBlockHeight++;
-  adjustDifficulty();
-  updateGlobalHashRate();
-  simulateMarket();
+export function updateGlobalState(currentStats: GlobalStats): GlobalStats {
+  const newStats = { ...currentStats };
   
-  logger.debug('Global state updated', { 
-    globalBlockHeight, 
-    globalMiningDifficulty, 
-    globalHashRate, 
-    coinMarketPrice 
-  });
-}
-
-function adjustDifficulty() {
-  if (globalBlockHeight % DIFFICULTY_ADJUSTMENT_INTERVAL === 0) {
-    const timeElapsed = Date.now() - lastDifficultyAdjustmentTime;
+  // Update block height
+  newStats.blockHeight++;
+  
+  // Update difficulty
+  if (newStats.blockHeight % DIFFICULTY_ADJUSTMENT_INTERVAL === 0) {
+    const timeElapsed = newStats.lastBlockTime.getTime() - currentStats.lastBlockTime.getTime();
     const expectedTime = DIFFICULTY_ADJUSTMENT_INTERVAL * TARGET_BLOCK_TIME * 1000;
-    
-    globalMiningDifficulty *= expectedTime / timeElapsed;
-    globalMiningDifficulty = Math.max(INITIAL_MINING_DIFFICULTY, globalMiningDifficulty);
-    
-    lastDifficultyAdjustmentTime = Date.now();
+    newStats.difficulty *= expectedTime / timeElapsed;
+    newStats.difficulty = Math.max(INITIAL_MINING_DIFFICULTY, newStats.difficulty);
   }
+  
+  // Update global hash rate
+  newStats.globalHashRate *= 1.0001; // Slight increase in global hash rate
+  
+  // Update network hash rate
+  newStats.networkHashRate = newStats.globalHashRate * (0.9 + Math.random() * 0.2); // 90-110% of global hash rate
+  
+  // Update mempool
+  newStats.mempool = Math.max(0, newStats.mempool - 1000 + Math.floor(Math.random() * 2000)); // Remove transactions, add new ones
+  
+  // Update market price (simplified)
+  const priceChange = (Math.random() - 0.5) * 0.02; // -1% to +1% change
+  newStats.coinMarketPrice *= (1 + priceChange);
+  newStats.coinMarketPrice = Math.max(0.01, newStats.coinMarketPrice); // Ensure price doesn't go below $0.01
+
+  newStats.lastBlockTime = new Date();
+  
+  return newStats;
 }
 
-function updateGlobalHashRate() {
-  // Simulate gradual increase in global hash rate
-  globalHashRate *= 1.001;
+export function getCurrentMarketPrice(globalStats: GlobalStats): number {
+  return globalStats.coinMarketPrice;
 }
 
-function simulateMarket() {
-  // Simple random walk for market price
-  const change = (Math.random() - 0.5) * 0.02; // -1% to +1% change
-  coinMarketPrice *= (1 + change);
-  coinMarketPrice = Math.max(0.01, coinMarketPrice); // Ensure price doesn't go below $0.01
-}
-
-export function getCurrentMarketPrice(): number {
-  return coinMarketPrice;
-}
-
-export function getGlobalStats() {
+export function getInitialGlobalStats(): GlobalStats {
   return {
-    blockHeight: globalBlockHeight,
-    difficulty: globalMiningDifficulty,
-    globalHashRate: globalHashRate,
-    marketPrice: coinMarketPrice
+    blockHeight: 0,
+    difficulty: INITIAL_MINING_DIFFICULTY,
+    globalHashRate: 1000,
+    lastBlockTime: new Date(),
+    networkHashRate: 1000,
+    mempool: 0,
+    coinMarketPrice: 1
   };
 }
 

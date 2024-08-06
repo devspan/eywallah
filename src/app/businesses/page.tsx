@@ -1,28 +1,30 @@
+// src/app/businesses/page.tsx
+
 "use client";
 import type React from 'react';
 import { useGameStore } from '@/lib/store';
 import { Button } from "@/components/ui/button";
-import { Cpu, Server, Briefcase, BarChart, DollarSign, Globe } from 'lucide-react';
+import { Cpu, Server, Network, DollarSign, BarChart, Globe } from 'lucide-react';
 import { BUSINESSES, calculateBusinessCost } from '@/lib/gameLogic';
 import type { BusinessType } from '@/types';
 
 const businessIcons: Record<BusinessType, React.ReactElement> = {
   gpuMiner: <Cpu className="w-8 h-8 text-purple-400" />,
   asicFarm: <Server className="w-8 h-8 text-blue-400" />,
-  blockchainStartup: <Briefcase className="w-8 h-8 text-green-400" />,
+  miningPool: <Network className="w-8 h-8 text-green-400" />,
   cryptoExchange: <DollarSign className="w-8 h-8 text-yellow-400" />,
   nftMarketplace: <BarChart className="w-8 h-8 text-pink-400" />,
   defiPlatform: <Globe className="w-8 h-8 text-cyan-400" />
 };
 
 const Businesses: React.FC = () => {
-  const { user, localCoins, buyBusiness } = useGameStore();
+  const { user, buyBusiness } = useGameStore();
 
   if (!user) return null;
 
   return (
     <div className="min-h-screen bg-[#1a2035] text-white p-4 overflow-y-auto">
-      <div className="space-y-4 max-w-3xl mx-auto pb-20"> {/* Added pb-20 for bottom padding */}
+      <div className="space-y-4 max-w-3xl mx-auto pb-20">
         {Object.entries(BUSINESSES).map(([type, business]) => {
           const ownedCount = user.businesses.find(b => b.type === type)?.count || 0;
           const cost = calculateBusinessCost(type as BusinessType, ownedCount);
@@ -40,10 +42,10 @@ const Businesses: React.FC = () => {
               </div>
               <Button 
                 onClick={() => buyBusiness(type as BusinessType)}
-                disabled={localCoins < cost}
+                disabled={user.cryptoCoins < cost}
                 size="sm"
                 className={`ml-4 ${
-                  localCoins >= cost
+                  user.cryptoCoins >= cost
                     ? 'bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 text-white'
                     : 'bg-gray-700 text-gray-400'
                 } transition-all duration-300`}

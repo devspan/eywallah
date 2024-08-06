@@ -13,9 +13,12 @@ import {
   calculateIncome, 
   calculateClickPower, 
   calculateBusinessCost, 
-  UPGRADES 
+  UPGRADES, 
+  BUSINESSES,
+  getInitialGlobalStats,
+  GlobalStats
 } from '@/lib/gameLogic';
-import { BusinessType, UpgradeType } from '@/types';
+import { BusinessType, UpgradeType, User } from '@/types';
 import { logger } from '@/lib/logger';
 
 export async function POST(request: Request) {
@@ -45,16 +48,18 @@ async function handleInit({ telegramId, username }: { telegramId: string, userna
   if (!user) {
     user = await createUser(telegramId, username || null);
   }
-  const income = calculateIncome(user);
-  const clickPower = calculateClickPower(user);
-  return NextResponse.json({ ...user, income, clickPower });
+  const globalStats = getInitialGlobalStats();
+  const income = calculateIncome(user, globalStats);
+  const clickPower = calculateClickPower(user, globalStats);
+  return NextResponse.json({ ...user, income, clickPower, globalStats });
 }
 
 async function handleSync({ userId, cryptoCoins }: { userId: string, cryptoCoins: number }) {
-  logger.debug('Handling sync request', { userId, cryptoCoins });
+  const globalStats = getInitialGlobalStats(); // In a real scenario, this should be fetched from a global state
   const user = await syncUserData(userId, cryptoCoins);
-  logger.debug('User data synced', { userId, updatedCoins: user.cryptoCoins });
-  return NextResponse.json(user);
+  const income = calculateIncome(user, globalStats);
+  const clickPower = calculateClickPower(user, globalStats);
+  return NextResponse.json({ ...user, income, clickPower, globalStats });
 }
 
 async function handleBuyBusiness({ userId, businessType }: { userId: string, businessType: string }) {
@@ -62,6 +67,10 @@ async function handleBuyBusiness({ userId, businessType }: { userId: string, bus
   if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
 
   const typedBusinessType = businessType as BusinessType;
+  if (!(typedBusinessType in BUSINESSES)) {
+    return NextResponse.json({ error: 'Invalid business type' }, { status: 400 });
+  }
+
   const existingBusiness = user.businesses.find(b => b.type === typedBusinessType);
   const currentCount = existingBusiness?.count || 0;
   const cost = calculateBusinessCost(typedBusinessType, currentCount);
@@ -74,36 +83,36 @@ async function handleBuyBusiness({ userId, businessType }: { userId: string, bus
   updatedUser.cryptoCoins -= cost;
   await updateUser(userId, { cryptoCoins: updatedUser.cryptoCoins });
 
-  const income = calculateIncome(updatedUser);
-  const clickPower = calculateClickPower(updatedUser);
-  return NextResponse.json({ ...updatedUser, income, clickPower });
+  const globalStats = getInitialGlobalStats(); // In a real scenario, this should be fetched from a global state
+  const income = calculateIncome(updatedUser, globalStats);
+  const clickPower = calculateClickPower(updatedUser, globalStats);
+  return NextResponse.json({ ...updatedUser, income, clickPower, globalStats });
 }
 
-async function handleBuyUpgrade({ userId, upgradeId }: { userId: string, upgradeId: string }) {
+async function handleBuyUpgrade({ userId, upgradeType }: { userId: string, upgradeType: string }) {
   const user = await getUserByTelegramId(userId);
-  if (!user) {
-    return NextResponse.json({ error: 'User not found' }, { status: 404 });
-  }
+  if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
 
-  const upgradeType = upgradeId as UpgradeType;
-  if (!(upgradeType in UPGRADES)) {
+  const typedUpgradeType = upgradeType as UpgradeType;
+  if (!(typedUpgradeType in UPGRADES)) {
     return NextResponse.json({ error: 'Invalid upgrade type' }, { status: 400 });
   }
 
-  const upgradeCost = UPGRADES[upgradeType].cost;
+  const upgradeCost = UPGRADES[typedUpgradeType].cost;
   if (user.cryptoCoins < upgradeCost) {
     return NextResponse.json({ error: 'Not enough coins' }, { status: 400 });
   }
 
-  if (user.upgrades.some(u => u.type === upgradeType)) {
+  if (user.upgrades.some(u => u.type === typedUpgradeType)) {
     return NextResponse.json({ error: 'Upgrade already purchased' }, { status: 400 });
   }
 
-  const updatedUser = await addUpgrade(userId, upgradeType);
+  const updatedUser = await addUpgrade(userId, typedUpgradeType);
   updatedUser.cryptoCoins -= upgradeCost;
   await updateUser(userId, { cryptoCoins: updatedUser.cryptoCoins });
 
-  const income = calculateIncome(updatedUser);
-  const clickPower = calculateClickPower(updatedUser);
-  return NextResponse.json({ ...updatedUser, income, clickPower });
+  const globalStats = getInitialGlobalStats(); // In a real scenario, this should be fetched from a global state
+  const income = calculateIncome(updatedUser, globalStats);
+  const clickPower = calculateClickPower(updatedUser, globalStats);
+  return NextResponse.json({ ...updatedUser, income, clickPower, globalStats });
 }

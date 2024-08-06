@@ -1,6 +1,6 @@
 import { PrismaClient, type Prisma } from '@prisma/client';
 import type { User, BusinessType, UpgradeType } from '@/types';
-import { BUSINESSES, UPGRADES, calculateIncome, calculateClickPower } from '@/lib/gameLogic';
+import { BUSINESSES, UPGRADES, calculateIncome, calculateClickPower, GlobalStats, getInitialGlobalStats } from '@/lib/gameLogic';
 import { logger } from '@/lib/logger';
 
 const prisma = new PrismaClient();
@@ -87,7 +87,7 @@ export async function createUser(telegramId: string, username: string | null): P
         prestigePoints: 0,
         incomeMultiplier: 1,
         offlineEarnings: 0,
-      } as Prisma.UserCreateInput,
+      },
       include: {
         businesses: true,
         upgrades: true,
@@ -209,7 +209,8 @@ export async function calculateOfflineEarnings(userId: string): Promise<{ user: 
 
     const now = new Date();
     const timeDiffInSeconds = (now.getTime() - user.lastActive.getTime()) / 1000;
-    const income = calculateIncome(user);
+    const globalStats = await getGlobalState();
+    const income = calculateIncome(user, globalStats);
     const offlineEarnings = income * timeDiffInSeconds;
 
     logger.debug('Updating user with offline earnings', { userId, offlineEarnings });
@@ -272,13 +273,49 @@ export async function syncUserData(userId: string, cryptoCoins: number): Promise
   try {
     logger.debug('Syncing user data', { userId, cryptoCoins });
     const user = await updateUser(userId, { cryptoCoins, lastActive: new Date() });
+    const globalStats = await getGlobalState();
     logger.debug('User updated', { userId, updatedCoins: user.cryptoCoins });
-    const income = calculateIncome(user);
-    const clickPower = calculateClickPower(user);
+    const income = calculateIncome(user, globalStats);
+    const clickPower = calculateClickPower(user, globalStats);
     logger.debug('User data synced', { userId, income, clickPower });
     return { ...user, income, clickPower };
   } catch (error) {
     logger.error('Error syncing user data', { userId, error });
+    throw error;
+  }
+}
+
+export async function getGlobalState(): Promise<GlobalStats> {
+  try {
+    logger.debug('Fetching global state');
+    let globalState = await prisma.globalState.findUnique({
+      where: { id: 'global' },
+    });
+    if (!globalState) {
+      logger.debug('Global state not found, creating initial state');
+      const initialStats = getInitialGlobalStats();
+      globalState = await prisma.globalState.create({
+        data: initialStats,
+      });
+    }
+    return globalState as GlobalStats;
+  } catch (error) {
+    logger.error('Error fetching global state', { error });
+    throw error;
+  }
+}
+
+export async function updateGlobalState(newState: Partial<GlobalStats>): Promise<GlobalStats> {
+  try {
+    logger.debug('Updating global state', { newState });
+    const updatedState = await prisma.globalState.update({
+      where: { id: 'global' },
+      data: newState,
+    });
+    logger.debug('Global state updated successfully');
+    return updatedState as GlobalStats;
+  } catch (error) {
+    logger.error('Error updating global state', { error });
     throw error;
   }
 }

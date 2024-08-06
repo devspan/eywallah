@@ -1,8 +1,10 @@
+// src/app/upgrades/page.tsx
+
 "use client";
 import type React from 'react';
 import { useGameStore } from '@/lib/store';
 import { Button } from "@/components/ui/button";
-import { Wifi, Snowflake, Settings, Rocket } from 'lucide-react';
+import { Wifi, Snowflake, Settings, Rocket, Atom } from 'lucide-react';
 import { UPGRADES, PRESTIGE_COST, calculatePrestigePoints } from '@/lib/gameLogic';
 import type { UpgradeType } from '@/types';
 
@@ -10,11 +12,12 @@ const upgradeIcons: Record<UpgradeType, React.ReactElement> = {
   fasterInternet: <Wifi className="w-8 h-8 text-blue-400" />,
   betterCooling: <Snowflake className="w-8 h-8 text-cyan-400" />,
   aiOptimization: <Settings className="w-8 h-8 text-green-400" />,
+  quantumMining: <Atom className="w-8 h-8 text-purple-400" />,
   clickUpgrade: <Rocket className="w-8 h-8 text-red-400" />
 };
 
 const Upgrades: React.FC = () => {
-  const { user, localCoins, buyUpgrade } = useGameStore();
+  const { user, buyUpgrade } = useGameStore();
 
   if (!user) return null;
 
@@ -44,10 +47,10 @@ const Upgrades: React.FC = () => {
               </div>
               <Button 
                 onClick={() => buyUpgrade(upgradeId)}
-                disabled={localCoins < upgrade.cost || isOwned}
+                disabled={user.cryptoCoins < upgrade.cost || isOwned}
                 size="sm"
                 className={`ml-4 ${
-                  localCoins >= upgrade.cost && !isOwned
+                  user.cryptoCoins >= upgrade.cost && !isOwned
                     ? 'bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 text-white'
                     : 'bg-gray-700 text-gray-400'
                 } transition-all duration-300`}
@@ -60,10 +63,10 @@ const Upgrades: React.FC = () => {
         <div className="mt-6">
           <Button 
             onClick={handlePrestige}
-            disabled={localCoins < PRESTIGE_COST}
+            disabled={user.cryptoCoins < PRESTIGE_COST}
             className="w-full py-3 text-lg bg-gradient-to-r from-yellow-500 to-red-500 hover:from-yellow-600 hover:to-red-600 text-white transition-all duration-300"
           >
-            Prestige (Gain {calculatePrestigePoints(localCoins)} points)
+            Prestige (Gain {calculatePrestigePoints(user.cryptoCoins)} points)
           </Button>
         </div>
       </div>

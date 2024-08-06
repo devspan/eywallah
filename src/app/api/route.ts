@@ -1,3 +1,5 @@
+// src/app/api/game/route.ts
+
 import { NextResponse } from 'next/server';
 import { 
   getUserByTelegramId, 
@@ -5,14 +7,16 @@ import {
   updateUser, 
   addBusiness, 
   addUpgrade,
-  syncUserData
+  syncUserData,
+  getGlobalState
 } from '@/lib/db';
 import { 
   calculateIncome, 
   calculateClickPower, 
   calculateBusinessCost, 
   UPGRADES, 
-  BUSINESSES
+  BUSINESSES,
+  GlobalStats
 } from '@/lib/gameLogic';
 import { BusinessType, UpgradeType, User } from '@/types';
 import { logger } from '@/lib/logger';
@@ -44,9 +48,10 @@ async function handleInit({ telegramId, username }: { telegramId: string, userna
   if (!user) {
     user = await createUser(telegramId, username || null);
   }
-  const income = calculateIncome(user);
-  const clickPower = calculateClickPower(user);
-  return NextResponse.json({ ...user, income, clickPower });
+  const globalStats = await getGlobalState();
+  const income = calculateIncome(user, globalStats);
+  const clickPower = calculateClickPower(user, globalStats);
+  return NextResponse.json({ ...user, income, clickPower, globalStats });
 }
 
 async function handleSync({ userId, cryptoCoins }: { userId: string, cryptoCoins: number }) {
@@ -75,9 +80,10 @@ async function handleBuyBusiness({ userId, businessType }: { userId: string, bus
   updatedUser.cryptoCoins -= cost;
   await updateUser(userId, { cryptoCoins: updatedUser.cryptoCoins });
 
-  const income = calculateIncome(updatedUser);
-  const clickPower = calculateClickPower(updatedUser);
-  return NextResponse.json({ ...updatedUser, income, clickPower });
+  const globalStats = await getGlobalState();
+  const income = calculateIncome(updatedUser, globalStats);
+  const clickPower = calculateClickPower(updatedUser, globalStats);
+  return NextResponse.json({ ...updatedUser, income, clickPower, globalStats });
 }
 
 async function handleBuyUpgrade({ userId, upgradeType }: { userId: string, upgradeType: string }) {
@@ -102,7 +108,8 @@ async function handleBuyUpgrade({ userId, upgradeType }: { userId: string, upgra
   updatedUser.cryptoCoins -= upgradeCost;
   await updateUser(userId, { cryptoCoins: updatedUser.cryptoCoins });
 
-  const income = calculateIncome(updatedUser);
-  const clickPower = calculateClickPower(updatedUser);
-  return NextResponse.json({ ...updatedUser, income, clickPower });
+  const globalStats = await getGlobalState();
+  const income = calculateIncome(updatedUser, globalStats);
+  const clickPower = calculateClickPower(updatedUser, globalStats);
+  return NextResponse.json({ ...updatedUser, income, clickPower, globalStats });
 }

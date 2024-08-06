@@ -1,5 +1,4 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
+// prisma/schema.prisma
 
 generator client {
   provider = "prisma-client-js"
@@ -12,7 +11,7 @@ datasource db {
 
 model User {
   id               String   @id @default(cuid())
-  telegramId       String?  @unique
+  telegramId       String   @unique
   username         String?
   cryptoCoins      Float    @default(0)
   lastActive       DateTime @default(now())
@@ -22,9 +21,6 @@ model User {
   businesses       Business[]
   upgrades         Upgrade[]
   achievements     Achievement[]
-  referrals        Referral[] @relation("Referrer")
-  referredBy       Referral? @relation("Referred")
-  leaderboardEntry LeaderboardEntry?
 }
 
 model Business {
@@ -49,19 +45,13 @@ model Achievement {
   userId String
 }
 
-model Referral {
-  id          String @id @default(cuid())
-  referrerId  String
-  referredId  String @unique
-  referrer    User   @relation("Referrer", fields: [referrerId], references: [id])
-  referred    User   @relation("Referred", fields: [referredId], references: [id])
-  createdAt   DateTime @default(now())
-}
-
-model LeaderboardEntry {
-  id          String @id @default(cuid())
-  userId      String @unique
-  user        User   @relation(fields: [userId], references: [id])
-  score       Float
-  updatedAt   DateTime @updatedAt
+model GlobalState {
+  id              String   @id @default("global")
+  blockHeight     Int      @default(0)
+  difficulty      Float    @default(1)
+  globalHashRate  Float    @default(1000)
+  lastBlockTime   DateTime @default(now())
+  networkHashRate Float    @default(1000)
+  mempool         Int      @default(0)
+  coinMarketPrice Float    @default(1)
 }
