@@ -5,7 +5,6 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import Image from 'next/image';
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { Button } from "@/components/ui/button";
 import { toast } from 'react-hot-toast';
 import { useTelegramAuth } from "@/components/TelegramAuthProvider";
 import { useGameStore } from '@/lib/store';
@@ -17,14 +16,14 @@ import { debounce } from 'lodash';
 
 const CLICK_COOLDOWN = 100; // 0.1 seconds 
 const SYNC_INTERVAL = 30000; // 30 seconds
-const GLOBAL_UPDATE_INTERVAL = 60000; // 60 seconds
+const GAME_UPDATE_INTERVAL = 1000; // 1 second
 const INIT_COOLDOWN = 5000; // 5 seconds cooldown for initialization attempts
 
 const GameComponent: React.FC = () => {
   const { user: telegramUser, isAuthenticated } = useTelegramAuth();
   const { 
-    user, income, clickPower, globalStats,
-    isLoading, error, updateCoins, syncWithServer, updateGlobalGame, fetchUserData, mineBlock,
+    user, income, clickPower,
+    isLoading, error, updateCoins, syncWithServer, updateGame, fetchUserData, performClick,
     buyBusiness, buyUpgrade
   } = useGameStore();
 
@@ -34,17 +33,44 @@ const GameComponent: React.FC = () => {
   const initializationAttemptRef = useRef(0);
   const isInitializingRef = useRef(false);
 
-  const debouncedUpdateCoins = useCallback(
-    debounce((amount: bigint) => {
-      updateCoins(amount);
-    }, 1000),
-    [updateCoins]
-  );
+  const debouncedUpdateCoinsRef = useRef(debounce((amount: bigint) => {
+    updateCoins(amount);
+  }, 1000));
 
-  const debouncedSyncWithServer = useCallback(
-    debounce(() => syncWithServer(), 5000),
-    [syncWithServer]
-  );
+  const debouncedSyncWithServerRef = useRef(debounce(() => syncWithServer(), 5000));
+
+  useEffect(() => {
+    debouncedUpdateCoinsRef.current = debounce((amount: bigint) => {
+      updateCoins(amount);
+    }, 1000);
+  }, [updateCoins]);
+
+  useEffect(() => {
+    debouncedSyncWithServerRef.current = debounce(() => syncWithServer(), 5000);
+  }, [syncWithServer]);
+
+  const debouncedUpdateCoins = useCallback((amount: bigint) => {
+    debouncedUpdateCoinsRef.current(amount);
+  }, []);
+
+  const debouncedSyncWithServer = useCallback(() => {
+    debouncedSyncWithServerRef.current();
+  }, []);
+
+  const getLastActiveTime = useCallback(() => {
+    if (user && user.lastActive) {
+      if (user.lastActive instanceof Date) {
+        return user.lastActive.getTime();
+      }
+      if (typeof user.lastActive === 'string') {
+        return new Date(user.lastActive).getTime();
+      }
+      if (typeof user.lastActive === 'number') {
+        return user.lastActive;
+      }
+    }
+    return Date.now();
+  }, [user]);
 
   const initializeUser = useCallback(async () => {
     if (isInitializingRef.current) return;
@@ -79,49 +105,106 @@ const GameComponent: React.FC = () => {
 
   useEffect(() => {
     if (user) {
-      const incomeTimer = setInterval(() => {
-        const earnedCoins = income / BigInt(10);
-        debouncedUpdateCoins(earnedCoins);
-      }, 100);
+      const gameUpdateTimer = setInterval(() => {
+        const lastActiveTime = getLastActiveTime();
+        const currentTime = Date.now();
+        const timeDifference = currentTime - lastActiveTime;
+        
+        updateGame(timeDifference);
+      }, GAME_UPDATE_INTERVAL);
 
-      return () => clearInterval(incomeTimer);
+      return () => clearInterval(gameUpdateTimer);
     }
-  }, [user, income, debouncedUpdateCoins]);
+  }, [user, updateGame, getLastActiveTime]);
 
   useEffect(() => {
     const syncTimer = setInterval(() => {
       debouncedSyncWithServer();
     }, SYNC_INTERVAL);
 
-    const globalUpdateTimer = setInterval(() => {
-      updateGlobalGame();
-    }, GLOBAL_UPDATE_INTERVAL);
-
-    return () => {
-      clearInterval(syncTimer);
-      clearInterval(globalUpdateTimer);
-    };
-  }, [debouncedSyncWithServer, updateGlobalGame]);
+    return () => clearInterval(syncTimer);
+  }, [debouncedSyncWithServer]);
 
   const handleCoinClick = useCallback(() => {
     const now = Date.now();
     if (now - lastClickTimeRef.current < CLICK_COOLDOWN) return;
     lastClickTimeRef.current = now;
-    mineBlock();
-    logger.debug('Coin clicked, mining block');
+    performClick();
+    logger.debug('Coin clicked');
 
     if (coinRef.current) {
+      // Coin bounce animation
       coinRef.current.classList.add('animate-bounce');
       setTimeout(() => coinRef.current?.classList.remove('animate-bounce'), 300);
 
-      const floatingText = document.createElement('div');
-      floatingText.textContent = `+${formatLargeNumber(clickPower)}`;
-      floatingText.className = 'absolute text-purple-400 font-bold text-2xl animate-float-up';
-      floatingText.style.left = `${Math.random() * 80 + 10}%`;
-      coinRef.current.appendChild(floatingText);
-      setTimeout(() => floatingText.remove(), 1000);
+      // Create multiple floating texts with different colors and sizes
+      const colors = ['text-purple-400', 'text-pink-400', 'text-blue-400', 'text-green-400'];
+      const sizes = ['text-lg', 'text-xl', 'text-2xl', 'text-3xl'];
+
+      for (let i = 0; i < 5; i++) {
+        const floatingText = document.createElement('div');
+        floatingText.textContent = `+${formatLargeNumber(clickPower)}`;
+        floatingText.className = `absolute font-bold ${colors[i % colors.length]} ${sizes[i % sizes.length]} animate-float-up`;
+        floatingText.style.left = `${Math.random() * 80 + 10}%`;
+        floatingText.style.top = `${Math.random() * 50 + 25}%`;
+        floatingText.style.opacity = '0';
+        floatingText.style.transform = 'scale(0.5)';
+        coinRef.current.appendChild(floatingText);
+
+        // Fade in and scale up
+        setTimeout(() => {
+          floatingText.style.transition = 'all 0.3s ease-out';
+          floatingText.style.opacity = '1';
+          floatingText.style.transform = 'scale(1)';
+        }, 50);
+
+        // Float up and fade out
+        setTimeout(() => {
+          floatingText.style.transition = 'all 0.7s ease-out';
+          floatingText.style.opacity = '0';
+          floatingText.style.transform = 'translateY(-100px) scale(0.8)';
+        }, 300);
+
+        setTimeout(() => floatingText.remove(), 1000);
+      }
+
+      // Add particle burst effect
+      const particleCount = 20;
+      for (let i = 0; i < particleCount; i++) {
+        const particle = document.createElement('div');
+        particle.className = 'absolute w-2 h-2 rounded-full';
+        particle.style.backgroundColor = ['#8B5CF6', '#EC4899', '#3B82F6', '#10B981'][Math.floor(Math.random() * 4)];
+        particle.style.left = '50%';
+        particle.style.top = '50%';
+        coinRef.current.appendChild(particle);
+
+        const angle = (i / particleCount) * 360;
+        const radius = Math.random() * 100 + 50;
+        const duration = Math.random() * 0.5 + 0.5;
+
+        particle.animate([
+          { transform: 'translate(-50%, -50%) rotate(0deg) translateY(0) scale(1)', opacity: 1 },
+          { transform: `translate(-50%, -50%) rotate(${angle}deg) translateY(${radius}px) scale(0)`, opacity: 0 }
+        ], {
+          duration: duration * 1000,
+          easing: 'cubic-bezier(0,0,0.2,1)'
+        }).onfinish = () => particle.remove();
+      }
+
+      // Add a ripple effect
+      const ripple = document.createElement('div');
+      ripple.className = 'absolute inset-0 rounded-full bg-white opacity-30 scale-0';
+      coinRef.current.appendChild(ripple);
+
+      ripple.animate([
+        { transform: 'scale(0)', opacity: 0.3 },
+        { transform: 'scale(2)', opacity: 0 }
+      ], {
+        duration: 600,
+        easing: 'cubic-bezier(0,0,0.2,1)'
+      }).onfinish = () => ripple.remove();
     }
-  }, [mineBlock, clickPower]);
+  }, [performClick, clickPower]);
 
   const handleBuyBusiness = useCallback((businessType: BusinessType) => {
     buyBusiness(businessType);
@@ -189,19 +272,18 @@ const GameComponent: React.FC = () => {
           <div 
             ref={coinRef}
             onClick={handleCoinClick}
-            className="bg-gradient-to-br from-purple-600 to-pink-500 rounded-full w-64 h-64 mb-4 cursor-pointer transition-transform duration-100 active:scale-95 relative overflow-hidden shadow-lg hover:shadow-2xl animate-spectrum-pulse-glow"
+            className="coin-container bg-gradient-to-br from-purple-600 to-pink-500 rounded-full w-64 h-64 mb-4 cursor-pointer transition-transform duration-100 active:scale-95 relative overflow-hidden shadow-lg hover:shadow-2xl animate-spectrum-pulse-glow"
           >
             <Image
               src="/splash.png"
               alt="Crypto Capitalist"
               layout="fill"
               objectFit="cover"
-              className="p-4 rounded-full"
+              className="coin-image p-4 rounded-full"
             />
           </div>
           <p className="text-5xl font-bold text-purple-400 mb-1">{formatLargeNumber(user.cryptoCoins)}</p>
           <p className="text-xl text-gray-400 mb-2">Crypto Coins</p>
-          <p className="text-sm text-green-400 mb-6">Market Price: ${globalStats.coinMarketPrice.toFixed(2)}</p>
 
           <div className="flex gap-4 mb-6 w-full max-w-md">
             <Card className="flex-1 bg-gradient-to-br from-blue-600 to-purple-600 shadow-md hover:shadow-lg transition-shadow">
@@ -214,17 +296,6 @@ const GameComponent: React.FC = () => {
               <CardContent className="p-3">
                 <p className="text-gray-200 text-sm">Click Power</p>
                 <p className="text-lg font-bold">{formatLargeNumber(clickPower)}</p>
-              </CardContent>
-            </Card>
-          </div>
-
-          <div className="w-full max-w-md mb-6">
-            <Card className="bg-gradient-to-br from-indigo-600 to-blue-600 shadow-md hover:shadow-lg transition-shadow">
-              <CardContent className="p-3">
-                <h3 className="text-lg font-bold mb-2">Global Stats</h3>
-                <p className="text-sm">Block Height: {globalStats.blockHeight.toLocaleString()}</p>
-                <p className="text-sm">Difficulty: {globalStats.difficulty.toFixed(2)}</p>
-                <p className="text-sm">Global Hash Rate: {globalStats.globalHashRate.toExponential(2)} H/s</p>
               </CardContent>
             </Card>
           </div>

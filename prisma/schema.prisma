@@ -10,17 +10,18 @@ datasource db {
 }
 
 model User {
-  id              String   @id @default(cuid())
-  telegramId      String   @unique
-  username        String?
-  cryptoCoins     BigInt   @default(0)
-  prestigePoints  Int      @default(0)
-  lastActive      DateTime @default(now())
-  incomeMultiplier Float   @default(1)
-  offlineEarnings BigInt   @default(0)
-  businesses      Business[]
-  upgrades        Upgrade[]
-  achievements    Achievement[]
+  id               String   @id @default(cuid())
+  telegramId       String   @unique
+  username         String?
+  cryptoCoins      BigInt   @default(0)
+  prestigePoints   Int      @default(0)
+  lastActive       DateTime @default(now())
+  incomeMultiplier Float    @default(1)
+  offlineEarnings  BigInt   @default(0)
+  businesses       Business[]
+  upgrades         Upgrade[]
+  achievements     Achievement[]
+  boosts           Boost[]
 }
 
 model Business {
@@ -47,13 +48,10 @@ model Achievement {
   userId     String
 }
 
-model GlobalState {
-  id              String   @id @default(cuid())
-  blockHeight     Int      @default(0)
-  difficulty      Float    @default(1)
-  globalHashRate  Float    @default(1000)
-  lastBlockTime   DateTime @default(now())
-  networkHashRate Float    @default(1000)
-  mempool         Int      @default(0)
-  coinMarketPrice Float    @default(1)
+model Boost {
+  id         String   @id @default(cuid())
+  multiplier Float
+  endTime    DateTime
+  user       User     @relation(fields: [userId], references: [id])
+  userId     String
 }

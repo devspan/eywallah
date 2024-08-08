@@ -1,16 +1,16 @@
 // src/lib/store.ts
 
 import { create } from 'zustand';
-import { debounce, throttle } from 'lodash';
-import { User, BusinessType, UpgradeType, GlobalStats } from '@/types';
+import { User, BusinessType, UpgradeType } from '@/types';
 import { 
   calculateIncome, 
   calculateClickPower,
-  updateGlobalState,
-  getInitialGlobalStats,
-  calculateMiningReward,
   calculateBusinessCost,
+  calculateUpgradeCost,
   UPGRADES,
+  simulateGameTick,
+  addBusiness,
+  addUpgrade,
   mineBlock
 } from '@/lib/gameLogic';
 import { logger } from '@/lib/logger';
@@ -21,15 +21,14 @@ interface GameState {
   error: string | null;
   income: bigint;
   clickPower: bigint;
-  globalStats: GlobalStats;
   setUser: (user: User) => void;
   updateCoins: (amount: bigint) => void;
   buyBusiness: (businessType: BusinessType) => void;
   buyUpgrade: (upgradeType: UpgradeType) => void;
   syncWithServer: () => Promise<void>;
-  updateGlobalGame: () => Promise<void>;
+  updateGame: (timeDifference: number) => void;
   fetchUserData: (telegramId: string, username?: string) => Promise<void>;
-  mineBlock: () => void;
+  performClick: () => void;
 }
 
 export const useGameStore = create<GameState>((set, get) => ({
@@ -37,103 +36,144 @@ export const useGameStore = create<GameState>((set, get) => ({
   isLoading: false,
   error: null,
   income: BigInt(0),
-  clickPower: BigInt(0),
-  globalStats: getInitialGlobalStats(),
+  clickPower: BigInt(1),
   
   setUser: (user) => {
-    const { globalStats } = get();
-    const income = calculateIncome(user, globalStats);
-    const clickPower = calculateClickPower(user, globalStats);
-    set({ user, income, clickPower });
-    logger.debug('User set in store', { userId: user.id, income: income.toString(), clickPower: clickPower.toString() });
+    try {
+      const income = calculateIncome(user);
+      const clickPower = calculateClickPower(user);
+      set({ user, income, clickPower });
+      logger.debug('User set in store', { 
+        userId: user.id, 
+        income: income.toString(), 
+        clickPower: clickPower.toString(),
+        cryptoCoins: user.cryptoCoins.toString(),
+        businesses: user.businesses,
+        upgrades: user.upgrades
+      });
+    } catch (error) {
+      logger.error('Error in setUser', { error, user: JSON.stringify(user) });
+      set({ error: 'Failed to set user data.' });
+    }
   },
 
-  updateCoins: debounce((amount: bigint) => {
-    set((state) => {
-      if (!state.user) return state;
-      const newCoins = state.user.cryptoCoins + amount;
-      const updatedUser = { ...state.user, cryptoCoins: newCoins };
-      const newIncome = calculateIncome(updatedUser, state.globalStats);
-      const newClickPower = calculateClickPower(updatedUser, state.globalStats);
-      logger.debug('Updating coins', { 
-        userId: state.user.id, 
-        oldCoins: state.user.cryptoCoins.toString(), 
-        newCoins: updatedUser.cryptoCoins.toString(),
-        amount: amount.toString()
-      });
-      return { 
-        user: updatedUser,
-        income: newIncome,
-        clickPower: newClickPower
-      };
-    });
-    get().syncWithServer();
-  }, 1000),
-
-  buyBusiness: (businessType) => {
-    const { user, globalStats } = get();
-    if (!user) return;
-
-    const existingBusiness = user.businesses.find(b => b.type === businessType);
-    const currentCount = existingBusiness?.count || 0;
-    const cost = calculateBusinessCost(businessType, currentCount);
-
-    if (user.cryptoCoins >= cost) {
+  updateCoins: (amount: bigint) => {
+    try {
       set((state) => {
         if (!state.user) return state;
-        const updatedBusinesses = existingBusiness
-          ? state.user.businesses.map(b => b.type === businessType ? { ...b, count: b.count + 1 } : b)
-          : [...state.user.businesses, { id: Date.now().toString(), type: businessType, count: 1 }];
-
-        const updatedUser = {
-          ...state.user,
-          cryptoCoins: state.user.cryptoCoins - cost,
-          businesses: updatedBusinesses
-        };
-        const newIncome = calculateIncome(updatedUser, state.globalStats);
-        const newClickPower = calculateClickPower(updatedUser, state.globalStats);
-        return {
+        const newCoins = state.user.cryptoCoins + amount;
+        logger.debug('Updating coins', { 
+          userId: state.user.id, 
+          oldCoins: state.user.cryptoCoins.toString(), 
+          newCoins: newCoins.toString(),
+          amount: amount.toString()
+        });
+        const updatedUser = { ...state.user, cryptoCoins: newCoins };
+        const newIncome = calculateIncome(updatedUser);
+        const newClickPower = calculateClickPower(updatedUser);
+        return { 
           user: updatedUser,
           income: newIncome,
           clickPower: newClickPower
         };
       });
       get().syncWithServer();
+    } catch (error) {
+      logger.error('Error in updateCoins', { error, amount: amount.toString() });
+      set({ error: 'Failed to update coins.' });
+    }
+  },
+  
+
+  buyBusiness: (businessType) => {
+    try {
+      const { user } = get();
+      if (!user) return;
+
+      const existingBusiness = user.businesses.find(b => b.type === businessType);
+      const currentCount = existingBusiness?.count || 0;
+      const cost = calculateBusinessCost(businessType, currentCount);
+
+      if (user.cryptoCoins >= cost) {
+        set((state) => {
+          if (!state.user) return state;
+          const updatedUser = addBusiness(state.user, businessType);
+          updatedUser.cryptoCoins -= cost;
+          const newIncome = calculateIncome(updatedUser);
+          const newClickPower = calculateClickPower(updatedUser);
+          logger.debug('Business purchased', { 
+            userId: updatedUser.id, 
+            businessType, 
+            cost: cost.toString(), 
+            newCoins: updatedUser.cryptoCoins.toString(),
+            newBusinessCount: updatedUser.businesses.find(b => b.type === businessType)?.count
+          });
+          return {
+            user: updatedUser,
+            income: newIncome,
+            clickPower: newClickPower
+          };
+        });
+        get().syncWithServer();
+      } else {
+        logger.debug('Insufficient funds for business purchase', { 
+          userId: user.id, 
+          businessType, 
+          cost: cost.toString(), 
+          userCoins: user.cryptoCoins.toString() 
+        });
+      }
+    } catch (error) {
+      logger.error('Error in buyBusiness', { error, businessType });
+      set({ error: 'Failed to purchase business.' });
     }
   },
 
   buyUpgrade: (upgradeType) => {
-    const { user, globalStats } = get();
-    if (!user) return;
+    try {
+      const { user } = get();
+      if (!user) return;
 
-    const upgradeCost = UPGRADES[upgradeType].cost;
+      const upgradeCost = calculateUpgradeCost(upgradeType, user.upgrades);
 
-    if (user.cryptoCoins >= upgradeCost && !user.upgrades.some(u => u.type === upgradeType)) {
-      set((state) => {
-        if (!state.user) return state;
-        const updatedUpgrades = [
-          ...state.user.upgrades,
-          { id: Date.now().toString(), type: upgradeType }
-        ];
-
-        const updatedUser = {
-          ...state.user,
-          cryptoCoins: state.user.cryptoCoins - upgradeCost,
-          upgrades: updatedUpgrades
-        };
-        const newIncome = calculateIncome(updatedUser, state.globalStats);
-        const newClickPower = calculateClickPower(updatedUser, state.globalStats);
-        return {
-          user: updatedUser,
-          income: newIncome,
-          clickPower: newClickPower
-        };
-      });
-      get().syncWithServer();
+      if (user.cryptoCoins >= upgradeCost && !user.upgrades.includes(upgradeType)) {
+        set((state) => {
+          if (!state.user) return state;
+          const updatedUser = addUpgrade(state.user, upgradeType);
+          updatedUser.cryptoCoins -= upgradeCost;
+          const newIncome = calculateIncome(updatedUser);
+          const newClickPower = calculateClickPower(updatedUser);
+          logger.debug('Upgrade purchased', { 
+            userId: updatedUser.id, 
+            upgradeType, 
+            cost: upgradeCost.toString(), 
+            newCoins: updatedUser.cryptoCoins.toString(),
+            upgrades: updatedUser.upgrades
+          });
+          return {
+            user: updatedUser,
+            income: newIncome,
+            clickPower: newClickPower
+          };
+        });
+        get().syncWithServer();
+      } else {
+        logger.debug('Unable to purchase upgrade', { 
+          userId: user.id, 
+          upgradeType, 
+          cost: upgradeCost.toString(), 
+          userCoins: user.cryptoCoins.toString(),
+          alreadyOwned: user.upgrades.includes(upgradeType)
+        });
+      }
+    } catch (error) {
+      logger.error('Error in buyUpgrade', { error, upgradeType });
+      set({ error: 'Failed to purchase upgrade.' });
     }
   },
 
-  syncWithServer: throttle(async () => {
+
+  syncWithServer: async () => {
     const { user } = get();
     if (!user) {
       logger.debug('No user to sync');
@@ -143,7 +183,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     try {
       logger.debug('Syncing with server', { 
         userId: user.id, 
-        coins: user.cryptoCoins.toString()
+        coins: user.cryptoCoins.toString(),
+        businesses: user.businesses,
+        upgrades: user.upgrades
       });
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/game`, {
         method: 'POST',
@@ -152,7 +194,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           action: 'sync', 
           data: { 
             userId: user.id, 
-            cryptoCoins: user.cryptoCoins.toString()
+            cryptoCoins: user.cryptoCoins.toString(),
+            businesses: user.businesses,
+            upgrades: user.upgrades
           } 
         }),
       });
@@ -160,47 +204,61 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (!response.ok) throw new Error('Failed to sync with server');
   
       const updatedUser = await response.json();
-      logger.debug('Sync successful', { updatedUser });
-      set((state) => ({ 
-        user: {
-          ...updatedUser,
-          cryptoCoins: BigInt(updatedUser.cryptoCoins)
-        },
-        income: calculateIncome(updatedUser, state.globalStats),
-        clickPower: calculateClickPower(updatedUser, state.globalStats)
-      }));
+      logger.debug('Sync successful', { 
+        userId: updatedUser.id, 
+        coins: updatedUser.cryptoCoins,
+        businesses: updatedUser.businesses,
+        upgrades: updatedUser.upgrades
+      });
+      set((state) => {
+        try {
+          const newUser = {
+            ...updatedUser,
+            cryptoCoins: BigInt(updatedUser.cryptoCoins),
+            lastActive: new Date(updatedUser.lastActive)
+          };
+          return { 
+            user: newUser,
+            income: calculateIncome(newUser),
+            clickPower: calculateClickPower(newUser)
+          };
+        } catch (error) {
+          logger.error('Error processing updated user', { error, updatedUser: JSON.stringify(updatedUser) });
+          return state;
+        }
+      });
     } catch (error) {
       logger.error('Failed to sync with server:', error);
       set({ error: 'Failed to sync with server. Please try again.' });
     }
-  }, 10000, { leading: true, trailing: true }),
+  },
 
-  updateGlobalGame: throttle(async () => {
+  updateGame: (timeDifference: number) => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/game`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'updateGlobalState' }),
-      });
-
-      if (!response.ok) throw new Error('Failed to update global state');
-
-      const newGlobalStats: GlobalStats = await response.json();
       set((state) => {
-        if (state.user) {
-          return { 
-            globalStats: newGlobalStats,
-            income: calculateIncome(state.user, newGlobalStats),
-            clickPower: calculateClickPower(state.user, newGlobalStats)
-          };
-        }
-        return { globalStats: newGlobalStats };
+        if (!state.user) return state;
+        const updatedUser = simulateGameTick(state.user, new Date(Date.now() - timeDifference));
+        logger.debug('Game updated', { 
+          userId: updatedUser.id, 
+          timeDifference, 
+          newCoins: updatedUser.cryptoCoins.toString(),
+          businesses: updatedUser.businesses,
+          upgrades: updatedUser.upgrades
+        });
+        return { 
+          user: {
+            ...updatedUser,
+            lastActive: new Date()
+          },
+          income: calculateIncome(updatedUser),
+          clickPower: calculateClickPower(updatedUser)
+        };
       });
     } catch (error) {
-      logger.error('Failed to update global game state:', error);
-      set({ error: 'Failed to update global game state. Please try again.' });
+      logger.error('Error in updateGame', { error, timeDifference });
+      set({ error: 'Failed to update game state.' });
     }
-  }, 30000, { leading: true, trailing: true }),
+  },
 
   fetchUserData: async (telegramId: string, username?: string) => {
     set({ isLoading: true, error: null });
@@ -218,14 +276,21 @@ export const useGameStore = create<GameState>((set, get) => ({
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       const userData = await response.json();
-      logger.debug('User data received', userData);
+      logger.debug('User data received', { 
+        userId: userData.id, 
+        coins: userData.cryptoCoins,
+        businesses: userData.businesses,
+        upgrades: userData.upgrades
+      });
+      const user = {
+        ...userData,
+        cryptoCoins: BigInt(userData.cryptoCoins),
+        lastActive: new Date(userData.lastActive)
+      };
       set(state => ({
-        user: {
-          ...userData,
-          cryptoCoins: BigInt(userData.cryptoCoins)
-        },
-        income: calculateIncome(userData, state.globalStats),
-        clickPower: calculateClickPower(userData, state.globalStats),
+        user,
+        income: calculateIncome(user),
+        clickPower: calculateClickPower(user),
         isLoading: false
       }));
     } catch (error) {
@@ -234,31 +299,26 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
   },
 
-  mineBlock: debounce(() => {
-    const { user, globalStats, clickPower } = get();
-    if (!user) return;
+  performClick: () => {
+    try {
+      const { user, clickPower } = get();
+      if (!user) return;
 
-    const { updatedCoins } = mineBlock(user, clickPower);
-    set((state) => {
-      const updatedUser = state.user ? { 
-        ...state.user, 
-        cryptoCoins: updatedCoins
-      } : null;
-      const updatedGlobalStats = updateGlobalState(state.globalStats);
-      
-      logger.debug('Mining block', { 
-        userId: updatedUser?.id, 
-        miningReward: clickPower.toString(), 
-        newTotalCoins: updatedCoins.toString()
+      const { updatedUser } = mineBlock(user, clickPower);
+      logger.debug('Click performed', { 
+        userId: updatedUser.id, 
+        clickPower: clickPower.toString(), 
+        newCoins: updatedUser.cryptoCoins.toString() 
       });
-
-      return {
+      set((state) => ({
         user: updatedUser,
-        globalStats: updatedGlobalStats,
-        income: updatedUser ? calculateIncome(updatedUser, updatedGlobalStats) : state.income,
-        clickPower: updatedUser ? calculateClickPower(updatedUser, updatedGlobalStats) : state.clickPower
-      };
-    });
-    get().syncWithServer();
-  }, 100)
+        income: calculateIncome(updatedUser),
+        clickPower: calculateClickPower(updatedUser)
+      }));
+      get().syncWithServer();
+    } catch (error) {
+      logger.error('Error in performClick', { error });
+      set({ error: 'Failed to process click.' });
+    }
+  }
 }));

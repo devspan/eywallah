@@ -1,3 +1,5 @@
+// src/types/index.ts
+
 // Core game types
 
 export interface User {
@@ -5,24 +7,22 @@ export interface User {
   telegramId: string;
   username: string | null;
   cryptoCoins: bigint;
-  prestigePoints: number;
   lastActive: Date;
-  incomeMultiplier: number;
-  offlineEarnings: number; 
   businesses: Business[];
-  upgrades: Upgrade[];
+  upgrades: UpgradeType[];
   achievements: Achievement[];
+  prestigePoints: number;
+  incomeMultiplier: number;
+  offlineEarnings: bigint;
+  boosts: Boost[];
 }
+
 
 export interface Business {
   id: string;
   type: BusinessType;
   count: number;
-}
-
-export interface Upgrade {
-  id: string;
-  type: UpgradeType;
+  lastCalculated: Date;
 }
 
 export interface Achievement {
@@ -31,33 +31,47 @@ export interface Achievement {
   unlockedAt: Date;
 }
 
-export interface GlobalStats {
+export interface Boost {
   id: string;
-  blockHeight: number;
-  difficulty: number;
-  globalHashRate: number;
-  lastBlockTime: Date;
-  networkHashRate: number;
-  mempool: number;
-  coinMarketPrice: number;
+  multiplier: number;
+  endTime: Date;
 }
-
-export type BusinessType = 'gpuMiner' | 'asicFarm' | 'miningPool' | 'cryptoExchange' | 'nftMarketplace' | 'defiPlatform';
-
-export type UpgradeType = 'fasterInternet' | 'betterCooling' | 'aiOptimization' | 'quantumMining' | 'clickUpgrade';
 
 export interface BusinessData {
   name: string;
   baseCost: bigint;
-  baseHashRate?: number;
-  baseTransactionFee?: number;
-  baseStakingReward?: number;
+  baseIncome: bigint;
 }
 
 export interface UpgradeData {
   name: string;
   cost: bigint;
   effect: number;
+}
+
+export type BusinessType = 'gpuMiner' | 'asicFarm' | 'miningPool' | 'cryptoExchange' | 'nftMarketplace' | 'defiPlatform';
+
+export type UpgradeType = 'fasterInternet' | 'betterCooling' | 'aiOptimization' | 'quantumMining' | 'clickUpgrade';
+
+// Constants
+
+export const PRESTIGE_COST: bigint = BigInt(1_000_000_000);
+export const MAX_TOTAL_SUPPLY: bigint = BigInt(200_000_000_000);
+
+// Game logic types
+
+export interface IncomeCalculationResult {
+  totalIncome: bigint;
+}
+
+export interface ClickPowerCalculationResult {
+  baseClickPower: bigint;
+  finalClickPower: bigint;
+}
+
+export interface OfflineProgressResult {
+  earnedCoins: bigint;
+  timePassed: number;
 }
 
 // API-related types
@@ -98,9 +112,8 @@ export interface GameState {
   user: User | null;
   isLoading: boolean;
   error: string | null;
-  income: number;
-  clickPower: number;
-  globalStats: GlobalStats;
+  income: bigint;
+  clickPower: bigint;
 }
 
 // Action types for state management
@@ -110,11 +123,10 @@ export type GameAction =
   | { type: 'UPDATE_COINS'; payload: bigint }
   | { type: 'BUY_BUSINESS'; payload: { businessType: BusinessType; cost: bigint } }
   | { type: 'BUY_UPGRADE'; payload: { upgradeType: UpgradeType; cost: bigint } }
-  | { type: 'UPDATE_GLOBAL_STATS'; payload: GlobalStats }
   | { type: 'SET_ERROR'; payload: string | null }
   | { type: 'SET_LOADING'; payload: boolean }
-  | { type: 'UPDATE_INCOME'; payload: number }
-  | { type: 'UPDATE_CLICK_POWER'; payload: number };
+  | { type: 'UPDATE_INCOME'; payload: bigint }
+  | { type: 'UPDATE_CLICK_POWER'; payload: bigint };
 
 // Leaderboard types
 
@@ -130,22 +142,48 @@ export interface LeaderboardData {
   userRank: number | null;
 }
 
-// Game logic types
+// Rank types
 
-export interface IncomeCalculationResult {
-  totalIncome: bigint;
-  miningIncome: bigint;
-  transactionFees: bigint;
-  stakingRewards: bigint;
+export interface Rank {
+  name: string;
+  threshold: bigint;
 }
 
-export interface ClickPowerCalculationResult {
-  baseClickPower: bigint;
-  finalClickPower: number;
-  clickPowerValue: bigint;
-}
+// Function types (based on game logic)
 
-export interface OfflineProgressResult {
-  earnedCoins: bigint;
-  timePassed: number;
-}
+export type CalculateIncome = (user: User) => bigint;
+export type CalculateClickPower = (user: User) => bigint;
+export type CalculateBusinessCost = (businessType: BusinessType, currentCount: number) => bigint;
+export type CalculateUpgradeCost = (upgradeType: UpgradeType, userUpgrades: UpgradeType[]) => bigint;
+export type CalculatePrestigePoints = (coins: bigint) => number;
+export type GetBusinessTypes = () => BusinessType[];
+export type GetUpgradeTypes = () => UpgradeType[];
+export type CalculateRank = (totalEarnings: bigint) => string;
+export type CanAfford = (user: User, cost: bigint) => boolean;
+export type ApplyPurchaseCost = (user: User, cost: bigint) => User;
+export type AddBusiness = (user: User, businessType: BusinessType) => User;
+export type AddUpgrade = (user: User, upgradeType: UpgradeType) => User;
+export type PerformPrestige = (user: User) => User;
+export type AddAchievement = (user: User, achievementType: string) => User;
+export type CheckAndAddAchievements = (user: User) => User;
+export type CalculateOfflineEarnings = (user: User, currentTime: Date) => bigint;
+export type SimulateGameTick = (user: User, currentTime: Date) => User;
+export type CanPrestige = (user: User) => boolean;
+export type GetNextRank = (user: User) => Rank | null;
+export type CalculateProgressToNextRank = (user: User) => number;
+export type FormatLargeNumber = (num: bigint) => string;
+export type CalculateTotalWorth = (user: User) => bigint;
+export type MineBlock = (user: User, clickPower: bigint) => { updatedUser: User };
+export type GetLeaderboardPosition = (user: User, allUsers: User[]) => number;
+export type CalculateEstimatedTimeToGoal = (user: User, goalCoins: bigint) => number;
+export type CalculateMaxAffordableCount = (user: User, businessType: BusinessType) => number;
+export type BuyMaxBusinesses = (user: User, businessType: BusinessType) => User;
+export type CalculateBoostDuration = (user: User) => number;
+export type ApplyBoost = (user: User, boostMultiplier: number, duration: number) => User;
+export type CleanExpiredBoosts = (user: User) => User;
+export type CalculateTotalBoostMultiplier = (user: User) => number;
+export type CalculateIdleTime = (user: User, currentTime: Date) => number;
+export type SimulateIdleEarnings = (user: User, currentTime: Date) => User;
+export type CalculateAllTimeEarnings = (user: User) => bigint;
+export type ResetUserProgress = (user: User) => User;
+export type CalculatePrestigeRewards = (user: User) => { prestigePoints: number, bonusMultiplier: number };

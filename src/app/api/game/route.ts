@@ -1,5 +1,3 @@
-// src/app/api/game/route.ts
-
 import { NextResponse } from 'next/server';
 import { 
   getUserByTelegramId, 
@@ -7,20 +5,18 @@ import {
   updateUser, 
   addBusiness, 
   addUpgrade,
-  syncUserData,
-  getGlobalState,
-  updateGlobalState
+  syncUserData
 } from '@/lib/db';
 import { 
   calculateIncome, 
   calculateClickPower, 
   calculateBusinessCost, 
+  calculateUpgradeCost,
   UPGRADES, 
   BUSINESSES,
-  updateGlobalState as updateGameGlobalState,
   mineBlock
 } from '@/lib/gameLogic';
-import { BusinessType, UpgradeType, User, GlobalStats } from '@/types';
+import { BusinessType, UpgradeType, User } from '@/types';
 import { logger } from '@/lib/logger';
 
 export async function POST(request: Request) {
@@ -52,17 +48,15 @@ async function handleInit({ telegramId, username }: { telegramId: string, userna
   if (!user) {
     user = await createUser(telegramId, username || null);
   }
-  const globalStats = await getGlobalState();
-  const income = calculateIncome(user, globalStats);
-  const clickPower = calculateClickPower(user, globalStats);
+  const income = calculateIncome(user);
+  const clickPower = calculateClickPower(user);
   
   return NextResponse.json({
     ...user,
     cryptoCoins: user.cryptoCoins.toString(),
     offlineEarnings: user.offlineEarnings.toString(),
     income: income.toString(),
-    clickPower: clickPower.toString(),
-    globalStats
+    clickPower: clickPower.toString()
   });
 }
 
@@ -70,9 +64,8 @@ async function handleSync({ userId, cryptoCoins }: { userId: string, cryptoCoins
   try {
     logger.debug('Handling sync', { userId, cryptoCoins });
     const user = await syncUserData(userId, BigInt(cryptoCoins));
-    const globalStats = await getGlobalState();
-    const income = calculateIncome(user, globalStats);
-    const clickPower = calculateClickPower(user, globalStats);
+    const income = calculateIncome(user);
+    const clickPower = calculateClickPower(user);
     
     logger.debug('Sync complete', { 
       userId, 
@@ -86,8 +79,7 @@ async function handleSync({ userId, cryptoCoins }: { userId: string, cryptoCoins
       cryptoCoins: user.cryptoCoins.toString(),
       offlineEarnings: user.offlineEarnings.toString(),
       income: income.toString(),
-      clickPower: clickPower.toString(),
-      globalStats
+      clickPower: clickPower.toString()
     });
   } catch (error) {
     logger.error('Error handling sync', { userId, error });
@@ -111,17 +103,15 @@ async function handleBuyBusiness({ userId, businessType }: { userId: string, bus
   updatedUser.cryptoCoins -= cost;
   await updateUser(userId, { cryptoCoins: updatedUser.cryptoCoins });
 
-  const globalStats = await getGlobalState();
-  const income = calculateIncome(updatedUser, globalStats);
-  const clickPower = calculateClickPower(updatedUser, globalStats);
+  const income = calculateIncome(updatedUser);
+  const clickPower = calculateClickPower(updatedUser);
   
   return NextResponse.json({
     ...updatedUser,
     cryptoCoins: updatedUser.cryptoCoins.toString(),
     offlineEarnings: updatedUser.offlineEarnings.toString(),
     income: income.toString(),
-    clickPower: clickPower.toString(),
-    globalStats
+    clickPower: clickPower.toString()
   });
 }
 
@@ -129,12 +119,12 @@ async function handleBuyUpgrade({ userId, upgradeType }: { userId: string, upgra
   const user = await getUserByTelegramId(userId);
   if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
 
-  const upgradeCost = BigInt(UPGRADES[upgradeType].cost);
+  const upgradeCost = calculateUpgradeCost(upgradeType, user.upgrades);
   if (user.cryptoCoins < upgradeCost) {
     return NextResponse.json({ error: 'Not enough coins' }, { status: 400 });
   }
 
-  if (user.upgrades.some(u => u.type === upgradeType)) {
+  if (user.upgrades.includes(upgradeType)) {
     return NextResponse.json({ error: 'Upgrade already purchased' }, { status: 400 });
   }
 
@@ -142,17 +132,15 @@ async function handleBuyUpgrade({ userId, upgradeType }: { userId: string, upgra
   updatedUser.cryptoCoins -= upgradeCost;
   await updateUser(userId, { cryptoCoins: updatedUser.cryptoCoins });
 
-  const globalStats = await getGlobalState();
-  const income = calculateIncome(updatedUser, globalStats);
-  const clickPower = calculateClickPower(updatedUser, globalStats);
+  const income = calculateIncome(updatedUser);
+  const clickPower = calculateClickPower(updatedUser);
   
   return NextResponse.json({
     ...updatedUser,
     cryptoCoins: updatedUser.cryptoCoins.toString(),
     offlineEarnings: updatedUser.offlineEarnings.toString(),
     income: income.toString(),
-    clickPower: clickPower.toString(),
-    globalStats
+    clickPower: clickPower.toString()
   });
 }
 
@@ -160,26 +148,21 @@ async function handleMineBlock({ userId }: { userId: string }) {
   const user = await getUserByTelegramId(userId);
   if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
 
-  let globalStats = await getGlobalState();
-  const clickPower = calculateClickPower(user, globalStats);
+  const clickPower = calculateClickPower(user);
 
-  const { updatedCoins } = mineBlock(user, clickPower);
+  const { updatedUser } = mineBlock(user, clickPower);
 
-  const updatedUser = await updateUser(userId, {
-    cryptoCoins: updatedCoins
+  const savedUser = await updateUser(userId, {
+    cryptoCoins: updatedUser.cryptoCoins
   });
 
-  globalStats = updateGameGlobalState(globalStats);
-  await updateGlobalState(globalStats);
-
-  const income = calculateIncome(updatedUser, globalStats);
+  const income = calculateIncome(savedUser);
 
   return NextResponse.json({ 
-    ...updatedUser,
-    cryptoCoins: updatedUser.cryptoCoins.toString(),
-    offlineEarnings: updatedUser.offlineEarnings.toString(),
+    ...savedUser,
+    cryptoCoins: savedUser.cryptoCoins.toString(),
+    offlineEarnings: savedUser.offlineEarnings.toString(),
     income: income.toString(),
-    clickPower: clickPower.toString(),
-    globalStats
+    clickPower: clickPower.toString()
   });
 }

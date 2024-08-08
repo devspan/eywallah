@@ -1,5 +1,3 @@
-// src/app/upgrades/page.tsx
-
 "use client";
 import type React from 'react';
 import { useGameStore } from '@/lib/store';
@@ -32,7 +30,7 @@ const Upgrades: React.FC = () => {
         {Object.entries(UPGRADES).map(([id, upgrade]) => {
           const upgradeId = id as UpgradeType;
           const icon = upgradeIcons[upgradeId];
-          const isOwned = user.upgrades.some(u => u.type === id);
+          const isOwned = user.upgrades.includes(upgradeId);
 
           return (
             <div key={id} className="flex items-center justify-between p-4 bg-gradient-to-r from-purple-900 to-indigo-900 rounded-lg shadow-lg hover:shadow-xl transition-all duration-300">

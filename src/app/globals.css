@@ -43,6 +43,20 @@ h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-heading);
 }
 
+/* Coin styles */
+.coin-container {
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  outline: none;
+}
+
+.coin-image {
+  pointer-events: none;
+}
+
 /* Coin animation */
 @keyframes addCoin {
   0% { transform: scale(1); }
@@ -123,4 +137,33 @@ h1, h2, h3, h4, h5, h6 {
 
 .animate-pulse-subtle {
   animation: pulse-subtle 2s ease-in-out infinite;
+}
+
+/* New animations for enhanced coin click effect */
+
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+.animate-bounce {
+  animation: bounce 0.3s ease-in-out;
+}
+
+@keyframes particle-burst {
+  0% { transform: translate(-50%, -50%) scale(0); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(1); opacity: 0; }
+}
+
+.animate-particle-burst {
+  animation: particle-burst 0.5s ease-out forwards;
+}
+
+@keyframes ripple {
+  0% { transform: scale(0); opacity: 0.3; }
+  100% { transform: scale(2); opacity: 0; }
+}
+
+.animate-ripple {
+  animation: ripple 0.6s cubic-bezier(0, 0, 0.2, 1) forwards;
 }

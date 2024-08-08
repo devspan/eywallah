@@ -21,7 +21,7 @@ const fontBody = Manrope({
   variable: '--font-body',
 });
 
-// Dynamically import Eruda to avoid SSR issues
+// Dynamically import Eruda only in development mode
 const ErudaInit = dynamic(
   () => import('@/components/ErudaInit'),
   { ssr: false }
@@ -36,6 +36,12 @@ export default function RootLayout({
 
   useEffect(() => {
     setIsDevelopment(process.env.NODE_ENV === 'development');
+
+    // Add viewport meta tag dynamically
+    const meta = document.createElement('meta');
+    meta.name = 'viewport';
+    meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no';
+    document.getElementsByTagName('head')[0].appendChild(meta);
   }, []);
 
   return (

@@ -8,7 +8,6 @@ import {
   addBusiness, 
   addUpgrade,
   syncUserData,
-  getGlobalState
 } from '@/lib/db';
 import { 
   calculateIncome, 
@@ -16,7 +15,6 @@ import {
   calculateBusinessCost, 
   UPGRADES, 
   BUSINESSES,
-  GlobalStats
 } from '@/lib/gameLogic';
 import { BusinessType, UpgradeType, User } from '@/types';
 import { logger } from '@/lib/logger';
@@ -48,21 +46,19 @@ async function handleInit({ telegramId, username }: { telegramId: string, userna
   if (!user) {
     user = await createUser(telegramId, username || null);
   }
-  const globalStats = await getGlobalState();
-  const income = calculateIncome(user, globalStats);
-  const clickPower = calculateClickPower(user, globalStats);
-  return NextResponse.json({ ...user, income, clickPower, globalStats });
+  const income = calculateIncome(user);
+  const clickPower = calculateClickPower(user);
+  return NextResponse.json({ ...user, income, clickPower });
 }
 
-async function handleSync({ userId, cryptoCoins, fractionalCoins }: { userId: string, cryptoCoins: number, fractionalCoins: number }) {
+async function handleSync({ userId, cryptoCoins }: { userId: string, cryptoCoins: bigint }) {
   try {
-    logger.debug('Handling sync', { userId, cryptoCoins, fractionalCoins });
-    const user = await syncUserData(userId, cryptoCoins, fractionalCoins);
-    const globalStats = await getGlobalState();
-    const income = calculateIncome(user, globalStats);
-    const clickPower = calculateClickPower(user, globalStats);
-    logger.debug('Sync complete', { userId, updatedCoins: user.cryptoCoins, updatedFractionalCoins: user.fractionalCoins, income, clickPower });
-    return NextResponse.json({ ...user, income, clickPower, globalStats });
+    logger.debug('Handling sync', { userId, cryptoCoins });
+    const user = await syncUserData(userId, cryptoCoins);
+    const income = calculateIncome(user);
+    const clickPower = calculateClickPower(user);
+    logger.debug('Sync complete', { userId, updatedCoins: user.cryptoCoins, income, clickPower });
+    return NextResponse.json({ ...user, income, clickPower });
   } catch (error) {
     logger.error('Error handling sync', { userId, error });
     return NextResponse.json({ error: 'Failed to sync user data' }, { status: 500 });
@@ -90,10 +86,9 @@ async function handleBuyBusiness({ userId, businessType }: { userId: string, bus
   updatedUser.cryptoCoins -= cost;
   await updateUser(userId, { cryptoCoins: updatedUser.cryptoCoins });
 
-  const globalStats = await getGlobalState();
-  const income = calculateIncome(updatedUser, globalStats);
-  const clickPower = calculateClickPower(updatedUser, globalStats);
-  return NextResponse.json({ ...updatedUser, income, clickPower, globalStats });
+  const income = calculateIncome(updatedUser);
+  const clickPower = calculateClickPower(updatedUser);
+  return NextResponse.json({ ...updatedUser, income, clickPower });
 }
 
 async function handleBuyUpgrade({ userId, upgradeType }: { userId: string, upgradeType: string }) {
@@ -110,7 +105,7 @@ async function handleBuyUpgrade({ userId, upgradeType }: { userId: string, upgra
     return NextResponse.json({ error: 'Not enough coins' }, { status: 400 });
   }
 
-  if (user.upgrades.some(u => u.type === typedUpgradeType)) {
+  if (user.upgrades.includes(typedUpgradeType)) {
     return NextResponse.json({ error: 'Upgrade already purchased' }, { status: 400 });
   }
 
@@ -118,8 +113,7 @@ async function handleBuyUpgrade({ userId, upgradeType }: { userId: string, upgra
   updatedUser.cryptoCoins -= upgradeCost;
   await updateUser(userId, { cryptoCoins: updatedUser.cryptoCoins });
 
-  const globalStats = await getGlobalState();
-  const income = calculateIncome(updatedUser, globalStats);
-  const clickPower = calculateClickPower(updatedUser, globalStats);
-  return NextResponse.json({ ...updatedUser, income, clickPower, globalStats });
+  const income = calculateIncome(updatedUser);
+  const clickPower = calculateClickPower(updatedUser);
+  return NextResponse.json({ ...updatedUser, income, clickPower });
 }
