@@ -62,8 +62,12 @@ export default function RootLayout({
         )}
       >
         <Providers>
-          <NavBar />
-          {children}
+          <div className="flex flex-col min-h-screen">
+            <main className="flex-grow pb-16"> {/* Add padding at the bottom to prevent content from being hidden behind the NavBar */}
+              {children}
+            </main>
+            <NavBar />
+          </div>
         </Providers>
         {isDevelopment && <ErudaInit />}
       </body>

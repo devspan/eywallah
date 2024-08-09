@@ -21,6 +21,12 @@ declare global {
       };
     };
   }
+
+  // Add MP3 module declaration
+  declare module '*.mp3' {
+    const src: string;
+    export default src;
+  }
 }
 
 export type {};

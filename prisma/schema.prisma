@@ -1,4 +1,5 @@
-// prisma/schema.prisma
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
   provider = "prisma-client-js"
@@ -16,21 +17,28 @@ model User {
   cryptoCoins      BigInt   @default(0)
   prestigePoints   Int      @default(0)
   lastActive       DateTime @default(now())
+  lastIncomeUpdate DateTime @default(now())
   incomeMultiplier Float    @default(1)
   offlineEarnings  BigInt   @default(0)
+  referralCode     String?  @unique
   businesses       Business[]
   upgrades         Upgrade[]
+  activeUpgrades   ActiveUpgrade[]
   achievements     Achievement[]
   boosts           Boost[]
+  tasks            Task[]
+  referrals        Referral[]
 }
 
 model Business {
   id             String   @id @default(cuid())
   type           String
   count          Int
-  lastCalculated DateTime @default(now())
+  lastCalculated DateTime
   user           User     @relation(fields: [userId], references: [id])
   userId         String
+
+  @@unique([userId, type])
 }
 
 model Upgrade {
@@ -38,6 +46,14 @@ model Upgrade {
   type   String
   user   User   @relation(fields: [userId], references: [id])
   userId String
+}
+
+model ActiveUpgrade {
+  id             String   @id @default(cuid())
+  type           String
+  expirationTime DateTime
+  user           User     @relation(fields: [userId], references: [id])
+  userId         String
 }
 
 model Achievement {
@@ -54,4 +70,27 @@ model Boost {
   endTime    DateTime
   user       User     @relation(fields: [userId], references: [id])
   userId     String
+}
+
+model Task {
+  id           String  @id @default(cuid())
+  type         String
+  description  String
+  url          String
+  rewardType   String
+  rewardAmount Int
+  completed    Boolean @default(false)
+  user         User    @relation(fields: [userId], references: [id])
+  userId       String
+}
+
+model Referral {
+  id           String   @id @default(cuid())
+  referrer     User     @relation(fields: [referrerId], references: [id])
+  referrerId   String
+  referredId   String
+  dateReferred DateTime @default(now())
+  bonusAwarded Boolean  @default(false)
+
+  @@unique([referrerId, referredId])
 }
